@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import {
   TextInput,
   Button,
@@ -10,6 +10,7 @@ import {
   RadioButton,
 } from 'react-native-paper';
 import { updateChallan } from '../../services/challanService';
+import { getProofImageUrl } from '../../services/detectionService';
 import { useRoute, useNavigation } from '@react-navigation/native';
 
 const EditChallanScreen = () => {
@@ -76,6 +77,17 @@ const EditChallanScreen = () => {
             <Text variant="bodyMedium" style={styles.studentName}>
               Student: {challan?.studentName || 'Unknown'}
             </Text>
+
+            {getProofImageUrl(challan) ? (
+              <View style={styles.proofSection}>
+                <Text variant="bodySmall" style={styles.proofLabel}>Detection proof</Text>
+                <Image
+                  source={{ uri: getProofImageUrl(challan) }}
+                  style={styles.proofImage}
+                  resizeMode="contain"
+                />
+              </View>
+            ) : null}
 
             <TextInput
               label="Amount (₹)"
@@ -175,6 +187,20 @@ const styles = StyleSheet.create({
   studentName: {
     marginBottom: 24,
     color: '#666',
+  },
+  proofSection: {
+    marginBottom: 16,
+  },
+  proofLabel: {
+    marginBottom: 8,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  proofImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
   },
   input: {
     marginBottom: 16,

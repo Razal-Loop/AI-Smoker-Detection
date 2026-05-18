@@ -1,141 +1,118 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import {
-  Card,
-  Text,
-  Title,
-  ActivityIndicator,
-  Chip,
-} from 'react-native-paper';
-import { getChallans } from '../../services/challanService';
-import { getUserById } from '../../services/userService';
-import { theme } from '../../theme/theme';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { View, StyleSheet, ScrollView, Image, RefreshControl, StatusBar } from 'react-native';
+import { Card, Text, ActivityIndicator, Chip } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
+import { getChallansWithStudentNames } from '../../services/challanService';
+import { getProofImageUrl } from '../../services/detectionService';
+import { getStatusColor, formatChallanDate } from '../../utils/challanUtils';
 
 const ChallansListScreen = () => {
   const [challans, setChallans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadChallans();
-  }, []);
+  useEffect(() => { loadChallans(); }, []);
 
-  const loadChallans = async () => {
+  const loadChallans = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    setLoadError('');
     try {
-      const allChallans = await getChallans();
-      // Fetch student names for each challan
-      const challansWithNames = await Promise.all(
-        allChallans.map(async (challan) => {
-          if (challan.studentId) {
-            try {
-              const student = await getUserById(challan.studentId);
-              return { ...challan, studentName: student?.name || 'Unknown' };
-            } catch {
-              return { ...challan, studentName: 'Unknown' };
-            }
-          }
-          return challan;
-        })
-      );
+      const challansWithNames = await getChallansWithStudentNames();
       setChallans(challansWithNames);
     } catch (error) {
-      console.error('Error loading challans:', error);
+      setLoadError(error?.message || 'LINK_ERR: RETRY_INIT_SYNC');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending':
-        return theme.colors.warning;
-      case 'paid':
-        return theme.colors.success;
-      case 'cancelled':
-        return theme.colors.error;
-      default:
-        return '#64748b';
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
-    );
-  }
+  if (loading && !refreshing) return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color="#f59e0b" />
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Title style={styles.headerTitle}>Challan Register</Title>
-        <View style={styles.badgeRow}>
-          <Chip style={styles.headerChip} icon="receipt">{challans.length} Total</Chip>
-          <Chip style={[styles.headerChip, { backgroundColor: theme.colors.warning + '20' }]} textStyle={{ color: theme.colors.warning }}>
-            {challans.filter(c => c.status === 'pending').length} Pending
-          </Chip>
+      <StatusBar barStyle="light-content" />
+      <LinearGradient colors={['#78350f', '#020617']} style={styles.header}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.headerTitle}>CHALLAN ARCHIVE</Text>
+            <Text style={styles.headerSubtitle}>ENFORCEMENT RECORD DATABASE</Text>
+          </View>
+          <View style={styles.iconBadge}>
+            <Icon name="file-document-outline" size={24} color="#fff" />
+          </View>
         </View>
-      </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {challans.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Icon name="history" size={64} color={theme.colors.outline} />
-            <Text style={styles.emptyText}>No challans found</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{challans.length}</Text>
+            <Text style={styles.statLabel}>TOTAL LOGS</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statBox}>
+            <Text style={[styles.statValue, { color: '#f59e0b' }]}>{challans.filter(c => c.status === 'pending').length}</Text>
+            <Text style={styles.statLabel}>UNRESOLVED</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadChallans(true); }} tintColor="#f59e0b" />}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {challans.length === 0 && !loadError ? (
+          <View style={styles.emptyBox}>
+            <Icon name="database-off-outline" size={48} color="#cbd5e1" />
+            <Text style={styles.emptyText}>NO PENALTY RECORDS DETECTED</Text>
           </View>
         ) : (
           challans.map((challan) => (
             <Card key={challan.id} style={styles.card}>
               <Card.Content>
                 <View style={styles.cardHeader}>
-                  <View style={styles.studentInfo}>
-                    <Title style={styles.studentName}>{challan.studentName || 'Unknown Student'}</Title>
-                    <Text style={styles.challanId}>REF: {challan.id.substring(0, 8).toUpperCase()}</Text>
+                  <View style={styles.entityInfo}>
+                    <Text style={styles.entityName}>{challan.studentName?.toUpperCase() || 'UNIDENTIFIED_ENTITY'}</Text>
+                    <Text style={styles.entityMeta}>REF_ID: {challan.id.substring(0, 10).toUpperCase()}</Text>
                   </View>
-                  <Chip
-                    style={[
-                      styles.statusChip,
-                      { backgroundColor: getStatusColor(challan.status) + '15' },
-                    ]}
-                    selectedColor={getStatusColor(challan.status)}
-                    textStyle={styles.statusText}
-                  >
+                  <Chip style={[styles.statusChip, { backgroundColor: getStatusColor(challan.status) }]} textStyle={styles.statusChipText}>
                     {challan.status?.toUpperCase()}
                   </Chip>
                 </View>
 
-                <View style={styles.divider} />
-
-                <View style={styles.detailsContainer}>
-                  <View style={styles.detailRow}>
-                    <View style={styles.detailItem}>
-                      <Icon name="payments" size={16} color="#64748b" />
-                      <Text style={styles.detailValue}>₹{challan.amount || 0}</Text>
-                    </View>
-                    <View style={styles.detailItem}>
-                      <Icon name="calendar-today" size={16} color="#64748b" />
-                      <Text style={styles.detailValue}>{formatDate(challan.createdAt)}</Text>
-                    </View>
+                {getProofImageUrl(challan) && (
+                  <View style={styles.imageBox}>
+                    <Image source={{ uri: getProofImageUrl(challan) }} style={styles.proofImage} />
+                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={styles.imageOverlay}>
+                      <Text style={styles.overlayText}>INCIDENT FOOTAGE LOGGED</Text>
+                    </LinearGradient>
                   </View>
+                )}
 
-                  {challan.location && (
-                    <View style={[styles.detailItem, { marginTop: 8 }]}>
-                      <Icon name="place" size={16} color="#64748b" />
-                      <Text style={styles.detailValue}>{challan.location}</Text>
-                    </View>
-                  )}
+                <View style={styles.metadataRow}>
+                  <View style={styles.metaItem}>
+                    <Icon name="currency-inr" size={14} color="#f59e0b" />
+                    <Text style={styles.metaValue}>₨ {challan.amount || 0}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Icon name="calendar-range" size={14} color="#94a3b8" />
+                    <Text style={styles.metaValue}>{formatChallanDate(challan.createdAt)}</Text>
+                  </View>
                 </View>
+
+                {challan.location && (
+                  <View style={styles.locationRow}>
+                    <Icon name="map-marker-radius-outline" size={14} color="#94a3b8" />
+                    <Text style={styles.locationText}>{challan.location.toUpperCase()}</Text>
+                  </View>
+                )}
               </Card.Content>
             </Card>
           ))
@@ -146,115 +123,37 @@ const ChallansListScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 12,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-  },
-  headerChip: {
-    marginRight: 8,
-    height: 28,
-  },
-  scrollView: {
-    flex: 1,
-    padding: 16,
-  },
-  emptyContainer: {
-    marginTop: 60,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: '#94a3b8',
-    marginTop: 12,
-    fontSize: 16,
-  },
-  card: {
-    marginBottom: 12,
-    borderRadius: 16,
-    elevation: 2,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  studentInfo: {
-    flex: 1,
-  },
-  studentName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1e293b',
-  },
-  challanId: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  statusChip: {
-    height: 24,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
-    marginVertical: 12,
-  },
-  detailsContainer: {
-    marginTop: 4,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  detailValue: {
-    marginLeft: 6,
-    fontSize: 13,
-    color: '#475569',
-    fontWeight: '500',
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { padding: 24, paddingTop: 60, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  headerTitle: { color: '#fff', fontSize: 22, fontWeight: '900', letterSpacing: 1 },
+  headerSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: '800', letterSpacing: 1, marginTop: 4 },
+  iconBadge: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  statsRow: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.2)', padding: 18, borderRadius: 24, alignItems: 'center' },
+  statBox: { flex: 1, alignItems: 'center' },
+  statValue: { color: '#fff', fontSize: 24, fontWeight: '900' },
+  statLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: '800', marginTop: 4, letterSpacing: 1 },
+  statDivider: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.1)' },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20 },
+  emptyBox: { marginTop: 60, alignItems: 'center' },
+  emptyText: { color: '#cbd5e1', fontSize: 11, fontWeight: '900', marginTop: 12, letterSpacing: 1 },
+  card: { borderRadius: 24, marginBottom: 16, backgroundColor: '#fff', elevation: 0, borderWidth: 1, borderColor: '#f1f5f9', overflow: 'hidden' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  entityName: { fontSize: 14, fontWeight: '900', color: '#0f172a', letterSpacing: 0.5 },
+  entityMeta: { fontSize: 10, color: '#94a3b8', fontWeight: '700', marginTop: 4 },
+  statusChip: { height: 26, borderRadius: 8 },
+  statusChipText: { fontSize: 9, fontWeight: '900', color: '#fff' },
+  imageBox: { height: 160, borderRadius: 20, overflow: 'hidden', marginBottom: 16 },
+  proofImage: { width: '100%', height: '100%' },
+  imageOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60, justifyContent: 'flex-end', padding: 12 },
+  overlayText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  metadataRow: { flexDirection: 'row', gap: 20, marginTop: 4 },
+  metaItem: { flexDirection: 'row', alignItems: 'center' },
+  metaValue: { fontSize: 12, fontWeight: '800', color: '#334155', marginLeft: 8 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f8fafc' },
+  locationText: { fontSize: 10, fontWeight: '800', color: '#94a3b8', marginLeft: 8, letterSpacing: 0.5 }
 });
 
 export default ChallansListScreen;
-
-
-
-
-
-
-
-
-
-
-
-

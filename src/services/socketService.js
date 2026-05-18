@@ -1,6 +1,6 @@
 // Socket.io service - URL from src/config/api.js (env-aware for production)
 import { io } from 'socket.io-client';
-import { SOCKET_URL } from '../config/api';
+import { getSocketUrl } from '../config/api';
 
 let socket = null;
 
@@ -9,11 +9,14 @@ export const connectSocket = () => {
     return socket;
   }
 
-  socket = io(SOCKET_URL, {
+  const socketUrl = getSocketUrl();
+  socket = io(socketUrl, {
     transports: ['websocket'],
     reconnection: true,
     reconnectionDelay: 1000,
-    reconnectionAttempts: 5,
+    reconnectionDelayMax: 10000,
+    reconnectionAttempts: 30,
+    timeout: 20000,
   });
 
   socket.on('connect', () => {

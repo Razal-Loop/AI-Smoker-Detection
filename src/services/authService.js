@@ -14,7 +14,7 @@ export const login = async (email, password, expectedRole = null) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     let userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
     
-    // If user document doesn't exist and it's an admin login, create it automatically
+    // If user document doesn't exist and it's an admin login, try to create it (requires Firestore rule allowing it)
     if (!userDoc.exists() && expectedRole === 'admin') {
       console.log('⚠️ Admin user document not found. Creating automatically...');
       try {
@@ -30,6 +30,13 @@ export const login = async (email, password, expectedRole = null) => {
       } catch (createError) {
         console.error('Error creating admin user document:', createError);
         await firebaseSignOut(auth);
+        const isPermissionError = createError?.code === 'permission-denied' || createError?.message?.includes('permission');
+        if (isPermissionError) {
+          throw new Error(
+            'Admin user document is missing and could not be created from the app (Firestore rules). ' +
+            'Ask someone with backend access to run: node backend/scripts/create-admin-user.js "' + email + '" <your-password> "Admin"'
+          );
+        }
         throw new Error('Failed to create admin user document. Please create it manually in Firestore.');
       }
     }

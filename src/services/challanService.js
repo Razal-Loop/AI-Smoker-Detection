@@ -1,5 +1,6 @@
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { getUserById } from './userService';
 
 export const createChallan = async (challanData) => {
   try {
@@ -29,6 +30,32 @@ export const getChallans = async (filters = {}) => {
     });
     
     return challans;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Fetch all challans (with optional filters) and enrich each with studentName from users collection.
+ * Use this in admin, guard, and security head challan list screens to avoid duplicate logic.
+ */
+export const getChallansWithStudentNames = async (filters = {}) => {
+  try {
+    const allChallans = await getChallans(filters);
+    const enriched = await Promise.all(
+      allChallans.map(async (challan) => {
+        if (challan.studentId) {
+          try {
+            const student = await getUserById(challan.studentId);
+            return { ...challan, studentName: student?.name || 'Unknown' };
+          } catch {
+            return { ...challan, studentName: 'Unknown' };
+          }
+        }
+        return challan;
+      })
+    );
+    return enriched;
   } catch (error) {
     throw error;
   }

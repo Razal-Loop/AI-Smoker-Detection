@@ -9,7 +9,9 @@ const admin = require('firebase-admin');
 
 // Read ServiceAccount from environment variable (Railway) or file (local)
 let serviceAccount;
-if (process.env.SERVICE_ACCOUNT_JSON) {
+if (process.env.NODE_ENV === 'test') {
+  serviceAccount = {};
+} else if (process.env.SERVICE_ACCOUNT_JSON) {
   try {
     serviceAccount = JSON.parse(process.env.SERVICE_ACCOUNT_JSON);
     console.log('✅ Using ServiceAccount from environment variable');
@@ -23,13 +25,20 @@ if (process.env.SERVICE_ACCOUNT_JSON) {
 }
 
 const detectionService = require('./services/detectionService');
+const { requireAuth } = require('./middleware/auth');
+const { apiLimiter, detectionProcessLimiter, detectionControlLimiter } = require('./middleware/rateLimit');
+const { errorHandler, log } = require('./middleware/errorHandler');
 
-// Use env bucket or derive from ServiceAccount so it matches frontend (same project)
-const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${serviceAccount.project_id}.firebasestorage.app`;
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  storageBucket,
-});
+// Use env bucket or derive from ServiceAccount. GCS bucket name must be project-id.appspot.com
+// (not .firebasestorage.app — that is for client download URLs only).
+const storageBucket = process.env.FIREBASE_STORAGE_BUCKET ||
+  (serviceAccount && serviceAccount.project_id ? `${serviceAccount.project_id}.appspot.com` : '');
+if (process.env.NODE_ENV !== 'test') {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket: storageBucket || 'default',
+  });
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -41,11 +50,23 @@ const io = new Server(server, {
     origin: corsOrigin || '*',
     methods: ['GET', 'POST'],
   },
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
 app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map(s => s.trim()) } : {}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+if (process.env.NODE_ENV !== 'test') {
+  app.use((req, res, next) => {
+    log('debug', `${req.method} ${req.path}`);
+    next();
+  });
+}
+
+app.get('/api/health', (req, res) => res.json({ status: 'ok', message: 'Server is running' }));
+app.use('/api', apiLimiter);
 
 // -------------------
 // SOCKET.IO CONNECTION
@@ -92,7 +113,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-app.post('/api/detection/process', upload.single('image'), async (req, res) => {
+app.post('/api/detection/process', detectionProcessLimiter, requireAuth, upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image provided' });
 
   try {
@@ -106,7 +127,7 @@ app.post('/api/detection/process', upload.single('image'), async (req, res) => {
 });
 
 // Detection endpoints
-app.post('/api/detection/start', async (req, res) => {
+app.post('/api/detection/start', detectionControlLimiter, requireAuth, async (req, res) => {
   try {
     const { cameraId, cameraUrl } = req.body;
     if (!cameraId) {
@@ -116,12 +137,13 @@ app.post('/api/detection/start', async (req, res) => {
     await detectionService.startDetection(cameraId, io, cameraUrl);
     res.json({ success: true, message: 'Detection started', cameraId });
   } catch (error) {
+    log('error', 'Error starting detection', { error: error.message });
     console.error('Error starting detection:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.post('/api/detection/stop', async (req, res) => {
+app.post('/api/detection/stop', detectionControlLimiter, requireAuth, async (req, res) => {
   try {
     const { cameraId } = req.body;
     if (!cameraId) {
@@ -136,19 +158,14 @@ app.post('/api/detection/stop', async (req, res) => {
   }
 });
 
-app.get('/api/detection/status/:cameraId', (req, res) => {
+app.get('/api/detection/status/:cameraId', requireAuth, (req, res) => {
   const { cameraId } = req.params;
   const status = detectionService.activeDetections[cameraId] || { isActive: false };
   res.json(status);
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running' });
-});
-
 // Challan endpoints (using Firestore)
-app.get('/api/challans', async (req, res) => {
+app.get('/api/challans', requireAuth, async (req, res) => {
   try {
     const { studentId } = req.query;
     const db = admin.firestore();
@@ -166,6 +183,7 @@ app.get('/api/challans', async (req, res) => {
 
     res.json(challans);
   } catch (error) {
+    log('error', 'Error fetching challans', { error: error.message });
     console.error('Error fetching challans:', error);
     res.status(500).json({ error: error.message });
   }
@@ -173,10 +191,7 @@ app.get('/api/challans', async (req, res) => {
 
 // Validation helpers
 function validateChallanCreate(body) {
-  const { studentId, amount } = body || {};
-  if (!studentId || typeof studentId !== 'string' || !studentId.trim()) {
-    return { error: 'studentId is required' };
-  }
+  const { amount } = body || {};
   const num = Number(amount);
   if (amount === undefined || amount === null || Number.isNaN(num) || num <= 0) {
     return { error: 'amount must be a positive number' };
@@ -199,30 +214,36 @@ function validateChallanUpdate(body) {
   return null;
 }
 
-app.post('/api/challans', async (req, res) => {
+app.post('/api/challans', requireAuth, async (req, res) => {
   const validation = validateChallanCreate(req.body);
   if (validation) return res.status(400).json({ error: validation.error });
 
   try {
     const db = admin.firestore();
-    const { studentId, amount, reason, status } = req.body;
+    const { studentId, studentName, amount, reason, description, location, imageUrl, status } = req.body;
     const challanData = {
-      studentId: String(studentId).trim(),
+      studentId: studentId ? String(studentId).trim() : 'UNIDENTIFIED',
+      studentName: studentName ? String(studentName) : 'UNKNOWN ENTITY',
       amount: Number(amount),
-      reason: reason != null ? String(reason) : '',
+      reason: reason != null ? String(reason) : (description || ''),
+      description: description != null ? String(description) : '',
+      location: location != null ? String(location) : '',
+      imageUrl: imageUrl != null ? String(imageUrl) : '',
       status: status || 'pending',
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     const docRef = await db.collection('challans').add(challanData);
     res.json({ id: docRef.id, ...challanData });
   } catch (error) {
+    log('error', 'Error creating challan', { error: error.message });
     console.error('Error creating challan:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-app.put('/api/challans/:id', async (req, res) => {
+app.put('/api/challans/:id', requireAuth, async (req, res) => {
   const validation = validateChallanUpdate(req.body);
   if (validation) return res.status(400).json({ error: validation.error });
 
@@ -244,7 +265,7 @@ app.put('/api/challans/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/challans/:id', async (req, res) => {
+app.delete('/api/challans/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const db = admin.firestore();
@@ -256,7 +277,7 @@ app.delete('/api/challans/:id', async (req, res) => {
   }
 });
 
-app.get('/api/challans/:id', async (req, res) => {
+app.get('/api/challans/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const db = admin.firestore();
@@ -274,7 +295,7 @@ app.get('/api/challans/:id', async (req, res) => {
 });
 
 // User endpoints
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', requireAuth, async (req, res) => {
   try {
     const { role } = req.query;
     const db = admin.firestore();
@@ -374,7 +395,73 @@ app.post('/api/users', authenticateAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/users/:id', async (req, res) => {
+app.patch('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email, password, name, role, photoBase64, ...extra } = req.body;
+    const db = admin.firestore();
+
+    // Verification: Admin can edit anyone, users can only edit themselves
+    if (req.user.role !== 'admin' && req.user.uid !== id) {
+      return res.status(403).json({ error: 'Permission denied' });
+    }
+
+    const updates = {};
+    const authUpdates = {};
+
+    if (email) {
+      authUpdates.email = email;
+      updates.email = email;
+    }
+    if (name) {
+      authUpdates.displayName = name;
+      updates.name = name;
+    }
+    if (password) {
+      authUpdates.password = password;
+    }
+    if (role && req.user.role === 'admin') {
+      updates.role = role;
+    }
+
+    // Handle photo update if provided
+    if (photoBase64) {
+      try {
+        const bucket = admin.storage().bucket();
+        const filename = `student-photos/${email || id}_${Date.now()}.jpg`;
+        const file = bucket.file(filename);
+        const buffer = Buffer.from(photoBase64, 'base64');
+        await file.save(buffer, {
+          metadata: { contentType: 'image/jpeg' },
+          public: true,
+          resumable: false
+        });
+        updates.photoUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+      } catch (err) {
+        console.error('Photo upload error during update:', err);
+      }
+    }
+
+    // Merge extra fields (studentId, etc)
+    Object.assign(updates, extra);
+    updates.updatedAt = new Date().toISOString();
+
+    // Update Firebase Auth if needed
+    if (Object.keys(authUpdates).length > 0) {
+      await admin.auth().updateUser(id, authUpdates);
+    }
+
+    // Update Firestore
+    await db.collection('users').doc(id).update(updates);
+
+    res.json({ success: true, updates });
+  } catch (e) {
+    console.error('Error updating user:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/users/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const db = admin.firestore();
@@ -392,7 +479,7 @@ app.get('/api/users/:id', async (req, res) => {
 });
 
 // Guards activity endpoint
-app.get('/api/guards/activity', async (req, res) => {
+app.get('/api/guards/activity', requireAuth, async (req, res) => {
   try {
     const db = admin.firestore();
     const guardsSnapshot = await db.collection('users').where('role', '==', 'guard').get();
@@ -417,7 +504,7 @@ app.get('/api/guards/activity', async (req, res) => {
 });
 
 // Live detections endpoint
-app.get('/api/detections/live', async (req, res) => {
+app.get('/api/detections/live', requireAuth, async (req, res) => {
   try {
     const db = admin.firestore();
     const detectionsSnapshot = await db.collection('detections')
@@ -449,7 +536,7 @@ app.get('/api/detections/live', async (req, res) => {
 });
 
 // Camera endpoints
-app.get('/api/cameras', async (req, res) => {
+app.get('/api/cameras', requireAuth, async (req, res) => {
   try {
     const db = admin.firestore();
     const camerasSnapshot = await db.collection('cameras').get();
@@ -464,7 +551,7 @@ app.get('/api/cameras', async (req, res) => {
   }
 });
 
-app.post('/api/cameras', async (req, res) => {
+app.post('/api/cameras', requireAuth, async (req, res) => {
   try {
     const { id, name, url, location, type } = req.body;
     if (!id || !name || !url) {
@@ -477,19 +564,46 @@ app.post('/api/cameras', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Camera ID already exists' });
     }
 
-    await db.collection('cameras').add({ id, name, url, location, type });
-    res.json({ success: true, camera: { id, name, url, location, type } });
+    const newCamera = {
+      id, name, url, location: location || '', type,
+      status: 'offline',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    await db.collection('cameras').add(newCamera);
+
+    res.json({ success: true, camera: newCamera });
   } catch (error) {
     console.error('Error adding camera:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Central error handler (must be last middleware)
+app.use(errorHandler);
+
 // -------------------
 // START SERVER
 // -------------------
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Detection service initialized`);
-});
+const HOST = process.env.HOST || '0.0.0.0'; // 0.0.0.0 = reachable from emulator (10.0.2.2) and LAN
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`🚀 AI Smoker Detection Backend running on port ${PORT}`);
+    console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
+
+    // Warm up face recognition cache on startup (don't await - non-blocking)
+    detectionService.warmUpFaceCache().then(() => {
+      // Start real-time sync after initial warm-up
+      detectionService.listenForStudentChanges();
+    }).catch(err => {
+      console.warn('⚠️ Face cache warmer failed to initialize:', err.message);
+    });
+
+    if (PORT === 3000) {
+      console.log(`  Android emulator → use http://10.0.2.2:${PORT}/api in app config`);
+    }
+  });
+} else {
+  module.exports = { app, server };
+}

@@ -1,48 +1,45 @@
-import { initializeApp, getApps } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  getAuth,
+  initializeAuth,
+  browserLocalPersistence
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
-// Firebase config — must match backend ServiceAccount project (cctv-smoking-detection)
+/**
+ * Firebase Configuration
+ * Using credentials from google-services.json and backend/.env
+ */
 const firebaseConfig = {
-  apiKey: "AIzaSyBVIqCrQPLf3lqTUtVW7Vk5tcEuXGnNqjE",
-  authDomain: "cctv-smoking-detection.firebaseapp.com",
-  projectId: "cctv-smoking-detection",
-  storageBucket: "cctv-smoking-detection.firebasestorage.app",
-  messagingSenderId: "496857301642",
-  appId: "1:496857301642:web:c3954df69fc3402337e373",
-  measurementId: "G-L79GH56MN0"
+  apiKey: "AIzaSyBGBAJMawxfq5S87lwmOpwZlXfoVmI6NxM",
+  authDomain: "smoking-detection-5e641.firebaseapp.com",
+  projectId: "smoking-detection-5e641",
+  storageBucket: "smoking-detection-5e641.firebasestorage.app",
+  messagingSenderId: "257104530268",
+  // Note: Web App ID should ideally be fetched from Firebase Console
+  // Using the Mobile app ID prefix pattern for now if web-specific ID is unknown
+  appId: "1:257104530268:web:757e64161f67f677d643a2"
 };
 
-let app, auth, db, storage;
+// Initialize Firebase
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-try {
-  const existingApps = getApps();
-  if (existingApps.length > 0) {
-    app = existingApps[0];
-  } else {
-    app = initializeApp(firebaseConfig);
-  }
+let auth;
+if (Platform.OS === 'web') {
+  auth = getAuth(app); // Uses default browser persistence
+} else {
+  // Mobile persistence - using require to avoid web bundling error
+  const { getReactNativePersistence } = require('firebase/auth');
+  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
 
-  // Initialize Auth with persistence for React Native
   auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+    persistence: getReactNativePersistence(AsyncStorage)
   });
-
-  db = getFirestore(app);
-  storage = getStorage(app);
-
-  console.log('✅ Firebase initialized successfully with persistence');
-} catch (error) {
-  console.error('❌ Firebase initialization error:', error);
-  app = null;
-  auth = null;
-  db = null;
-  storage = null;
 }
 
-export { auth, db, storage };
-export default app;
+const db = getFirestore(app);
+const storage = getStorage(app);
 
-
+export { app, auth, db, storage };

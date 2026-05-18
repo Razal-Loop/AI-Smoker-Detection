@@ -1,16 +1,52 @@
 // API service - URLs from src/config/api.js (env-aware for production)
-import { API_BASE_URL } from '../config/api';
+import { getApiBaseUrl } from '../config/api';
+import { auth } from '../config/firebase';
+
+/** Message shown when backend is not reachable (e.g. not running or firewall). */
+export const BACKEND_UNREACHABLE_MSG =
+  'Backend unreachable. Start it first: run "npm run backend" in another terminal (or cd backend && npm start), then try again.';
+
+export function isNetworkError(error) {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  const name = (error.name || '').toLowerCase();
+  return (
+    msg.includes('network request failed') ||
+    msg.includes('network error') ||
+    name === 'typeerror' ||
+    msg.includes('failed to fetch')
+  );
+}
+
+let _networkWarned = false;
+
+const getAuthToken = async () => {
+  if (!auth?.currentUser) return null;
+  try {
+    return await auth.currentUser.getIdToken();
+  } catch (e) {
+    return null;
+  }
+};
 
 export const apiRequest = async (endpoint, options = {}) => {
-  const { headers, ...restOptions } = options;
+  const { headers = {}, ...restOptions } = options;
+  const token = await getAuthToken();
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+  const baseUrl = getApiBaseUrl();
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${baseUrl}${endpoint}`, {
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders,
         ...headers,
       },
       ...restOptions,
     });
+
+    if (response.status === 401) {
+      throw new Error('Session expired or unauthorized. Please sign in again.');
+    }
 
     if (!response.ok) {
       let errorMessage = 'Request failed';
@@ -29,15 +65,16 @@ export const apiRequest = async (endpoint, options = {}) => {
     }
     return await response.text();
   } catch (error) {
-    const url = `${API_BASE_URL}${endpoint}`;
-    console.error('API Error:', error.message || error);
-    if (error.message === 'Network request failed' || error.name === 'TypeError') {
-      console.warn(
-        '[Network] Request failed to',
-        url,
-        '— check backend is running and DEV_API in src/config/api.js matches your machine (use 10.0.2.2:3000 for Android emulator).'
-      );
+    const baseUrl = getApiBaseUrl();
+    const url = `${baseUrl}${endpoint}`;
+    if (isNetworkError(error)) {
+      if (__DEV__ && !_networkWarned) {
+        _networkWarned = true;
+        console.warn('[Network] Backend not reachable at', url, '—', BACKEND_UNREACHABLE_MSG);
+      }
+      throw new Error(BACKEND_UNREACHABLE_MSG);
     }
+    console.error('API Error:', error.message || error);
     if (error.message) {
       throw error;
     }
@@ -65,6 +102,7 @@ export const getDetectionStatus = async (cameraId) => {
 };
 
 export const processImage = async (imageUri) => {
+  const token = await getAuthToken();
   const formData = new FormData();
   formData.append('image', {
     uri: imageUri,
@@ -72,19 +110,37 @@ export const processImage = async (imageUri) => {
     name: 'photo.jpg',
   });
 
-  const response = await fetch(`${API_BASE_URL}/detection/process`, {
-    method: 'POST',
-    body: formData,
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || data.message || `HTTP ${response.status}`);
+  const baseUrl = getApiBaseUrl();
+  try {
+    const response = await fetch(`${baseUrl}/detection/process`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...headers,
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      throw new Error('Session expired or unauthorized. Please sign in again.');
+    }
+    if (!response.ok) {
+      throw new Error(data.error || data.message || `HTTP ${response.status}`);
+    }
+    return data;
+  } catch (err) {
+    if (isNetworkError(err)) {
+      if (__DEV__) {
+        console.warn('[Network] Backend not reachable —', BACKEND_UNREACHABLE_MSG);
+      }
+      throw new Error(BACKEND_UNREACHABLE_MSG);
+    }
+    throw err;
   }
-  return data;
 };
 
 // Challan API
@@ -120,14 +176,20 @@ export const getUsersAPI = async (role = null) => {
 };
 
 export const createUserAPI = async (userData, authToken = null) => {
+  const token = authToken || await getAuthToken();
   const headers = {};
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   return apiRequest('/users', {
     method: 'POST',
     headers,
+    body: JSON.stringify(userData),
+  });
+};
+
+export const updateUserAPI = async (userId, userData) => {
+  return apiRequest(`/users/${userId}`, {
+    method: 'PATCH',
     body: JSON.stringify(userData),
   });
 };
@@ -140,6 +202,18 @@ export const getGuardsActivityAPI = async () => {
 // Live Detections API
 export const getLiveDetectionsAPI = async () => {
   return apiRequest('/detections/live');
+};
+
+/** Ping backend health; returns true if reachable, false otherwise. Does not throw. */
+export const checkBackendHealth = async () => {
+  try {
+    const baseUrl = getApiBaseUrl();
+    const healthUrl = baseUrl.replace(/\/api\/?$/, '') + '/api/health';
+    const res = await fetch(healthUrl, { method: 'GET' });
+    return res.ok;
+  } catch {
+    return false;
+  }
 };
 
 // Camera API

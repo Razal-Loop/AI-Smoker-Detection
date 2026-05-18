@@ -4,8 +4,14 @@ YOLOv8 Frame Detection Script (Production-ready)
 Processes a single frame from stdin (JPEG buffer) and returns JSON detection results.
 Uses detection_config for thresholds and robust class matching.
 """
-
 import sys
+import os
+
+# Ensure we can import detection_config when run from backend/ (cwd != script dir)
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+if _script_dir not in sys.path:
+    sys.path.insert(0, _script_dir)
+
 import json
 import cv2
 import numpy as np
@@ -23,10 +29,12 @@ try:
         MIN_FACE_HEIGHT,
     )
 except ImportError:
-    DETECTION_CONF_THRESHOLD = 0.55
+    DETECTION_CONF_THRESHOLD = 0.4
     MIN_FACE_WIDTH, MIN_FACE_HEIGHT = 60, 60
     def is_smoking_class(n):
-        return n and any(k in n.lower() for k in ("smoker", "smoking", "cigarette", "cigar", "smoke"))
+        return n and any(k in n.lower() for k in (
+            "smoker", "smoking", "cigarette", "cigar", "smoke", "cig", "smk", "vape", "tobacco"
+        ))
     def is_relevant_class(n):
         return (n and (is_smoking_class(n) or any(k in n.lower() for k in ("person", "face", "human"))))
 
@@ -86,8 +94,9 @@ detections = []
 annotated_frame = frame.copy()
 face_images = []  # Store extracted faces for recognition
 
+# Run YOLO with a low confidence so we get more candidates; we filter by threshold below
 try:
-    results = model(frame, conf=DETECTION_CONF_THRESHOLD, verbose=False)
+    results = model(frame, conf=0.25, verbose=False)
 
     # Face detector for extracting faces when smoking detected
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
@@ -153,24 +162,41 @@ except Exception as e:
     sys.exit(1)
 
 # --------------------------
-# Encode annotated frame as base64 if detections found
+# Encode annotated frame as base64 only when smoking is detected (high quality for clear proof)
 # --------------------------
 snapshot = None
-if detections:
+has_smoking = any(is_smoking_class(d.get("label")) for d in detections)
+if detections and has_smoking:
     try:
-        _, buffer = cv2.imencode('.jpg', annotated_frame)
+        encode_params = [cv2.IMWRITE_JPEG_QUALITY, 95]
+        _, buffer = cv2.imencode('.jpg', annotated_frame, encode_params)
         snapshot = base64.b64encode(buffer).decode('utf-8')
     except Exception as e:
         print(f"Warning: Failed to encode snapshot: {str(e)}", file=sys.stderr)
 
 # --------------------------
-# Output JSON result
+# Output JSON result (ensure all values are JSON-serializable; numpy types are not)
 # --------------------------
+def to_native(obj):
+    if hasattr(obj, 'item'):  # numpy scalar
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        return {k: to_native(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [to_native(v) for v in obj]
+    return obj
+
+h, w = frame.shape[:2]
 result = {
-    "detections": detections,
+    "detections": to_native(detections),
     "timestamp": str(cv2.getTickCount()),
     "snapshot": snapshot,
-    "faceImages": face_images  # Include face image paths for recognition
+    "faceImages": to_native(face_images),
+    "imageWidth": int(w),
+    "imageHeight": int(h),
+    "modelClasses": list(model.names.values()) if hasattr(model, 'names') and model.names else [],
 }
 
 print(json.dumps(result))

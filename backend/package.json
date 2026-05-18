@@ -5,25 +5,29 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "start:production": "node -e \"process.env.NODE_ENV='production';require('./server.js')\"",
+    "start:production": "NODE_ENV=production node server.js",
     "dev": "nodemon server.js",
     "create-admin": "node scripts/create-admin-user.js",
     "test:production": "node scripts/test-production.js",
     "test:detection": "python scripts/run_detection_test.py",
     "test:detection-api": "node scripts/test-detection-api.js",
-    "verify-launch": "node ../verify-launch.js"
+    "verify-launch": "node ../verify-launch.js",
+    "test": "jest --runInBand"
   },
   "dependencies": {
     "axios": "^1.6.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.1.5",
     "firebase-admin": "^11.11.1",
     "multer": "^1.4.5-lts.1",
     "socket.io": "^4.6.1",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "supertest": "^6.3.3"
   }
 }

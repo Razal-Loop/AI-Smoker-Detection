@@ -1,303 +1,204 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, Dimensions, StatusBar, Alert, Platform, useWindowDimensions } from 'react-native';
 import {
   Card,
   Text,
-  Title,
-  Button,
   FAB,
   ActivityIndicator,
-  Dialog,
-  Portal,
-  Paragraph,
-  Chip,
-  Searchbar,
-  SegmentedButtons,
+  useTheme,
+  Avatar,
+  IconButton,
+  TouchableRipple
 } from 'react-native-paper';
-import { getUsers } from '../../services/userService';
-import { deleteUser } from '../../services/userService';
-import { useNavigation } from '@react-navigation/native';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { getUsers, deleteUser } from '../../services/userService';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 
-const ManageUsersScreen = () => {
+
+
+const ManageUsersScreen = ({ navigation }) => {
+  const { width, height } = useWindowDimensions();
+
   const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [deleteDialog, setDeleteDialog] = useState({ visible: false, userId: null });
-  const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const navigation = useNavigation();
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  useEffect(() => {
-    filterUsers();
-  }, [users, searchQuery, roleFilter]);
+  const [refreshing, setRefreshing] = useState(false);
+  const theme = useTheme();
 
   const loadUsers = async () => {
     try {
-      const allUsers = await getUsers();
-      // Filter out admin users from the list (admin manages others)
-      const nonAdminUsers = allUsers.filter(user => user.role !== 'admin');
-      setUsers(nonAdminUsers);
+      const data = await getUsers();
+      setUsers(data);
     } catch (error) {
-      console.error('Error loading users:', error);
+      console.error('User Fetch Error:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const filterUsers = () => {
-    let filtered = [...users];
+  useEffect(() => {
+    loadUsers();
+    const unsubscribe = navigation.addListener('focus', loadUsers);
+    return unsubscribe;
+  }, [navigation]);
 
-    // Filter by role
-    if (roleFilter !== 'all') {
-      filtered = filtered.filter(user => user.role === roleFilter);
-    }
-
-    // Filter by search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(user => 
-        user.name?.toLowerCase().includes(query) ||
-        user.email?.toLowerCase().includes(query) ||
-        user.studentId?.toLowerCase().includes(query)
-      );
-    }
-
-    setFilteredUsers(filtered);
+  const handleDelete = (userId) => {
+    Alert.alert(
+      'DELETE USER',
+      'Are you sure you want to delete this user account?',
+      [
+        { text: 'CANCEL', style: 'cancel' },
+        {
+          text: 'DELETE',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteUser(userId);
+              loadUsers();
+            } catch (err) {
+              Alert.alert('Protocol Error', 'Failed to terminate entity.');
+            }
+          }
+        }
+      ]
+    );
   };
 
-  const handleDelete = async () => {
-    if (deleteDialog.userId) {
-      try {
-        await deleteUser(deleteDialog.userId);
-        await loadUsers();
-        setDeleteDialog({ visible: false, userId: null });
-      } catch (error) {
-        console.error('Error deleting user:', error);
-      }
-    }
-  };
-
-  const getRoleColor = (role) => {
-    switch (role) {
-      case 'admin':
-        return '#F44336';
-      case 'student':
-        return '#2196F3';
-      case 'guard':
-        return '#4CAF50';
-      case 'security_head':
-        return '#FF9800';
-      default:
-        return '#666';
-    }
-  };
-
-  const getRoleIcon = (role) => {
-    switch (role) {
-      case 'admin':
-        return 'admin-panel-settings';
-      case 'student':
-        return 'school';
-      case 'guard':
-        return 'security';
-      case 'security_head':
-        return 'supervisor-account';
-      default:
-        return 'person';
-    }
-  };
-
-  if (loading) {
+  if (loading && !refreshing) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
+      <View style={styles.centerSection}>
+        <ActivityIndicator color={theme.colors.primary} size="large" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.filterContainer}>
-        <Searchbar
-          placeholder="Search users..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          style={styles.searchbar}
-        />
-        <SegmentedButtons
-          value={roleFilter}
-          onValueChange={setRoleFilter}
-          buttons={[
-            { value: 'all', label: 'All' },
-            { value: 'student', label: 'Students' },
-            { value: 'guard', label: 'Guards' },
-            { value: 'security_head', label: 'Security Head' },
-          ]}
-          style={styles.segmentedButtons}
-        />
-      </View>
-      <ScrollView style={styles.scrollView}>
-        {filteredUsers.length === 0 && !loading && (
-          <Card style={styles.emptyCard}>
-            <Card.Content>
-              <Text style={styles.emptyText}>No users found</Text>
-            </Card.Content>
-          </Card>
-        )}
-        {filteredUsers.map((user) => (
-          <Card key={user.id} style={styles.card}>
-            <Card.Content>
-              <View style={styles.userHeader}>
-                <View style={styles.userInfo}>
-                  <Icon
-                    name={getRoleIcon(user.role)}
-                    size={24}
-                    color={getRoleColor(user.role)}
-                  />
-                  <View style={styles.userDetails}>
-                    <Title>{user.name || user.email}</Title>
-                    <Text style={styles.email}>{user.email}</Text>
-                  </View>
-                </View>
-                <Chip
-                  style={[styles.chip, { backgroundColor: getRoleColor(user.role) + '20' }]}
-                  textStyle={{ color: getRoleColor(user.role) }}
-                >
-                  {user.role?.replace('_', ' ').toUpperCase()}
-                </Chip>
-              </View>
-              {user.studentId && (
-                <Paragraph style={styles.studentId}>
-                  Student ID: {user.studentId}
-                </Paragraph>
-              )}
-            </Card.Content>
-            <Card.Actions>
-              <Button
-                onPress={() => navigation.navigate('EditUser', { userId: user.id })}
-                textColor="#2196F3"
-              >
-                Edit
-              </Button>
-              <Button
-                onPress={() => setDeleteDialog({ visible: true, userId: user.id })}
-                textColor="#F44336"
-              >
-                Delete
-              </Button>
-            </Card.Actions>
-          </Card>
-        ))}
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient colors={theme.colors.headerGradient} style={styles.header}>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>USER DIRECTORY</Text>
+          <Text style={styles.headerSub}>{users.filter(u => u.role === 'student').length} Students Registered</Text>
+        </View>
+      </LinearGradient>
+
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); loadUsers(); }}
+            tintColor={theme.colors.primary}
+          />
+        }
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.grid}>
+          {users.map((user) => (
+            <UserCard
+              key={user.id}
+              user={user}
+              onEdit={() => navigation.navigate('EditUser', { userId: user.id })}
+              onDelete={() => handleDelete(user.id)}
+            />
+          ))}
+        </View>
+        <View style={{ height: 120 }} />
       </ScrollView>
 
       <FAB
-        icon="plus"
-        style={styles.fab}
+        icon="account-plus"
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+        color="#FFFFFF"
         onPress={() => navigation.navigate('AddUser')}
       />
-
-      <Portal>
-        <Dialog
-          visible={deleteDialog.visible}
-          onDismiss={() => setDeleteDialog({ visible: false, userId: null })}
-        >
-          <Dialog.Title>Delete User</Dialog.Title>
-          <Dialog.Content>
-            <Paragraph>Are you sure you want to delete this user?</Paragraph>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setDeleteDialog({ visible: false, userId: null })}>
-              Cancel
-            </Button>
-            <Button onPress={handleDelete} textColor="#F44336">
-              Delete
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
     </View>
   );
 };
 
+const UserCard = ({ user, onEdit, onDelete }) => {
+  const theme = useTheme();
+  const roleColors = {
+    admin: '#0F172A',
+    student: '#06B6D4',
+    guard: '#F59E0B',
+    security_head: '#22C55E'
+  };
+  const roleColor = roleColors[user.role] || theme.colors.primary;
+
+  return (
+    <Card style={styles.userCard} elevation={2}>
+      <View style={styles.cardInner}>
+        <View style={styles.avatarSection}>
+          {user.photoUrl ? (
+            <Avatar.Image
+              size={56}
+              source={{ uri: user.photoUrl }}
+              style={[styles.avatar, { backgroundColor: '#F8FAFC' }]}
+            />
+          ) : (
+            <Avatar.Text
+              size={56}
+              label={user.name?.[0] || 'U'}
+              style={[styles.avatar, { backgroundColor: 'rgba(15, 23, 42, 0.08)' }]}
+              labelStyle={[styles.avatarLabel, { color: theme.colors.primary }]}
+            />
+          )}
+          <View style={[styles.roleBadge, { backgroundColor: roleColor }]}>
+            <Text style={styles.roleText}>{user.role?.replace('_', ' ').toUpperCase() || 'STUDENT'}</Text>
+          </View>
+        </View>
+
+        <View style={styles.infoSection}>
+          <Text style={styles.userName}>{user.name || 'No Name'}</Text>
+          <Text style={styles.userEmail}>{user.email}</Text>
+          <Text style={styles.userMetadata}>ID: {user.studentId || 'N/A'}</Text>
+        </View>
+
+        <View style={styles.actionSection}>
+          <IconButton
+            icon="account-edit-outline"
+            size={22}
+            iconColor={theme.colors.primary}
+            onPress={onEdit}
+            style={styles.actionBtn}
+          />
+          <IconButton
+            icon="delete-sweep-outline"
+            size={22}
+            iconColor={theme.colors.error}
+            onPress={onDelete}
+            style={styles.actionBtn}
+          />
+        </View>
+      </View>
+    </Card>
+  );
+};
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  filterContainer: {
-    padding: 16,
-    paddingBottom: 8,
-    backgroundColor: '#FFFFFF',
-    elevation: 2,
-  },
-  searchbar: {
-    marginBottom: 12,
-  },
-  segmentedButtons: {
-    marginBottom: 8,
-  },
-  scrollView: {
-    flex: 1,
-    padding: 16,
-  },
-  emptyCard: {
-    marginTop: 20,
-    elevation: 2,
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#666',
-    fontSize: 16,
-  },
-  card: {
-    marginBottom: 12,
-    elevation: 2,
-  },
-  userHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  userDetails: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  email: {
-    color: '#666',
-    fontSize: 12,
-  },
-  chip: {
-    marginLeft: 8,
-  },
-  studentId: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#666',
-  },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
-  },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  centerSection: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  header: { paddingTop: Platform.OS === 'ios' ? 70 : 60, paddingBottom: 44, paddingHorizontal: 24, borderBottomLeftRadius: 40, borderBottomRightRadius: 40 },
+  headerContent: { alignItems: 'flex-start' },
+  headerTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', letterSpacing: 2 },
+  headerSub: { color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '700', marginTop: 6, letterSpacing: 1 },
+  scrollContent: { padding: 20, paddingTop: 30 },
+  grid: { gap: 16 },
+  userCard: { borderRadius: 32, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  cardInner: { padding: 18, flexDirection: 'row', alignItems: 'center' },
+  avatarSection: { alignItems: 'center', position: 'relative' },
+  avatar: { borderWidth: 1, borderColor: '#F1F5F9' },
+  avatarLabel: { fontWeight: '900' },
+  roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginTop: -12, borderWidth: 2, borderColor: '#FFFFFF', elevation: 4 },
+  roleText: { fontSize: 8, fontWeight: '900', color: '#FFFFFF' },
+  infoSection: { flex: 1, marginLeft: 20 },
+  userName: { fontSize: 17, fontWeight: '900', color: '#111827' },
+  userEmail: { fontSize: 13, color: '#6B7280', fontWeight: '500', marginTop: 2 },
+  userMetadata: { fontSize: 11, color: '#94A3B8', fontWeight: '900', marginTop: 8, letterSpacing: 1 },
+  actionSection: { alignItems: 'center' },
+  actionBtn: { backgroundColor: '#F8FAFC', marginVertical: 4 },
+  fab: { position: 'absolute', margin: 24, right: 10, bottom: 85, borderRadius: 20 }
 });
 
 export default ManageUsersScreen;
-
-

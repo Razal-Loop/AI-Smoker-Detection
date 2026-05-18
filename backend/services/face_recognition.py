@@ -42,8 +42,17 @@ try:
         print(json.dumps({"error": "Could not read detected face image", "matchedStudent": None}))
         sys.exit(1)
     
-    # Convert BGR to RGB (face_recognition uses RGB)
-    detected_image_rgb = cv2.cvtColor(detected_image, cv2.COLOR_BGR2RGB)
+    # IMAGE ENHANCEMENT: Fine-tune visibility for better recognition
+    # 1. Convert to LAB color space to equalize lightness without affecting color
+    lab = cv2.cvtColor(detected_image, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    lab = cv2.merge((l, a, b))
+    detected_enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    
+    # 2. Convert to RGB
+    detected_image_rgb = cv2.cvtColor(detected_enhanced, cv2.COLOR_BGR2RGB)
     
     # Get face encodings from detected image
     detected_encodings = face_recognition.face_encodings(detected_image_rgb)
@@ -64,72 +73,65 @@ except Exception as e:
 try:
     from detection_config import FACE_MATCH_THRESHOLD
 except ImportError:
-    import os
-    FACE_MATCH_THRESHOLD = float(os.environ.get("FACE_MATCH_THRESHOLD", "0.55"))
-
-# Skip matching if detected face is too small (unreliable)
-MIN_FACE_PIXELS = 60 * 60
-try:
-    h, w = detected_image.shape[:2]
-    if w * h < MIN_FACE_PIXELS:
-        print(json.dumps({
-            "matchedStudent": None,
-            "message": "Face image too small for reliable matching",
-            "timestamp": datetime.utcnow().isoformat()
-        }))
-        sys.stdout.flush()
-        sys.exit(0)
-except Exception:
-    pass
+    FACE_MATCH_THRESHOLD = float(os.environ.get("FACE_MATCH_THRESHOLD", "0.50"))
 
 best_match = None
 best_distance = float('inf')
 
-for student in students:
-    if not student.get('photoUrl'):
-        continue
-    
+# OPTIMIZATION: Try to load from cache first
+CACHE_PATH = os.path.join(os.path.dirname(__file__), "student_encodings.pkl")
+cached_encodings = {}
+if os.path.exists(CACHE_PATH):
     try:
-        # Download student photo from URL
-        response = requests.get(student['photoUrl'], timeout=10)
-        if response.status_code != 200:
+        import pickle
+        with open(CACHE_PATH, 'rb') as f:
+            cached_encodings = pickle.load(f)
+    except Exception:
+        pass
+
+if cached_encodings:
+    # Fast match using cache
+    for s_id, data in cached_encodings.items():
+        try:
+            distance = face_recognition.face_distance([detected_encoding], data['encoding'])[0]
+            if distance < best_distance and distance < FACE_MATCH_THRESHOLD:
+                best_distance = distance
+                best_match = {
+                    "id": s_id,
+                    "name": data.get('name'),
+                    "email": data.get('email'),
+                    "studentId": data.get('studentId'),
+                    "confidence": 1.0 - distance,
+                    "distance": float(distance)
+                }
+        except Exception:
             continue
-        
-        # Convert to numpy array
-        nparr = np.frombuffer(response.content, np.uint8)
-        student_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-        if student_image is None:
-            continue
-        
-        # Convert to RGB
-        student_image_rgb = cv2.cvtColor(student_image, cv2.COLOR_BGR2RGB)
-        
-        # Get face encodings
-        student_encodings = face_recognition.face_encodings(student_image_rgb)
-        
-        if len(student_encodings) == 0:
-            continue
-        
-        student_encoding = student_encodings[0]
-        
-        # Calculate face distance
-        distance = face_recognition.face_distance([detected_encoding], student_encoding)[0]
-        
-        if distance < best_distance and distance < FACE_MATCH_THRESHOLD:
-            best_distance = distance
-            best_match = {
-                "id": student.get('id'),
-                "name": student.get('name'),
-                "email": student.get('email'),
-                "studentId": student.get('studentId'),
-                "confidence": 1.0 - distance,  # Convert distance to confidence (0-1)
-                "distance": float(distance)
-            }
-    
-    except Exception as e:
-        # Skip this student if there's an error
-        continue
+else:
+    # Slow fallback: original logic
+    for student in students:
+        if not student.get('photoUrl'): continue
+        try:
+            response = requests.get(student['photoUrl'], timeout=10)
+            if response.status_code != 200: continue
+            nparr = np.frombuffer(response.content, np.uint8)
+            student_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if student_image is None: continue
+            student_image_rgb = cv2.cvtColor(student_image, cv2.COLOR_BGR2RGB)
+            student_encodings = face_recognition.face_encodings(student_image_rgb)
+            if len(student_encodings) == 0: continue
+            student_encoding = student_encodings[0]
+            distance = face_recognition.face_distance([detected_encoding], student_encoding)[0]
+            if distance < best_distance and distance < FACE_MATCH_THRESHOLD:
+                best_distance = distance
+                best_match = {
+                    "id": student.get('id'),
+                    "name": student.get('name'),
+                    "email": student.get('email'),
+                    "studentId": student.get('studentId'),
+                    "confidence": 1.0 - distance,
+                    "distance": float(distance)
+                }
+        except Exception: continue
 
 # --------------------------
 # Output result

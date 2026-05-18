@@ -1,162 +1,159 @@
 import React, { useState } from 'react';
-import {
-  View,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from 'react-native';
-import { TextInput, Button, Text, Card, Snackbar } from 'react-native-paper';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import {  View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, StatusBar , useWindowDimensions } from 'react-native';
+import { TextInput, Button, Text, Card, Snackbar, useTheme, IconButton } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { login } from '../../services/authService';
 
+
+
 const StudentLoginScreen = ({ navigation }) => {
+  const { width, height } = useWindowDimensions();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const theme = useTheme();
 
   const handleLogin = async () => {
     if (!email || !password) {
-      setError('Please fill in all fields');
+      setError('VALIDATION ERROR: MISSING ATTRIBUTES');
       return;
     }
-
     setLoading(true);
     setError('');
-
     try {
       await login(email, password, 'student');
     } catch (err) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      setError(err.message || 'ACCESS DENIED: REJECTED');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Card style={styles.card}>
-          <Card.Content>
-            <View style={styles.iconContainer}>
-              <Icon name="school" size={64} color="#4CAF50" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <View style={styles.headerBackground}>
+        <LinearGradient colors={theme.colors.headerGradient} style={styles.headerGradient}>
+          <IconButton
+            icon="chevron-left"
+            iconColor="#fff"
+            size={30}
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          />
+          <View style={styles.headerContent}>
+            <View style={styles.iconCircle}>
+              <Icon name="account-school" size={52} color="#EC4899" />
             </View>
-            <Text variant="headlineMedium" style={styles.title}>
-              Student Login
-            </Text>
-            <Text variant="bodyMedium" style={styles.subtitle}>
-              Access your student portal
-            </Text>
+            <Text style={styles.titleText}>STUDENT PORTAL</Text>
+            <Text style={styles.subtitleText}>SECURE ACADEMIC IDENTIFICATION</Text>
+          </View>
+        </LinearGradient>
+      </View>
 
-            <TextInput
-              label="Email"
-              value={email}
-              onChangeText={setEmail}
-              mode="outlined"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              left={<TextInput.Icon icon="email" />}
-              style={styles.input}
-            />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Card style={styles.loginCard} elevation={4}>
+            <Card.Content style={styles.cardInner}>
+              <TextInput
+                label="INSTITUTIONAL EMAIL"
+                value={email}
+                onChangeText={setEmail}
+                mode="outlined"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                textColor="#111827"
+                outlineColor="#E2E8F0"
+                activeOutlineColor="#EC4899"
+                style={styles.input}
+                left={<TextInput.Icon icon="email-outline" iconColor="#6B7280" />}
+              />
 
-            <TextInput
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              mode="outlined"
-              secureTextEntry
-              left={<TextInput.Icon icon="lock" />}
-              style={styles.input}
-            />
+              <TextInput
+                label="SECURITY PHRASE"
+                value={password}
+                onChangeText={setPassword}
+                mode="outlined"
+                secureTextEntry
+                textColor="#111827"
+                outlineColor="#E2E8F0"
+                activeOutlineColor="#EC4899"
+                style={styles.input}
+                left={<TextInput.Icon icon="lock-outline" iconColor="#6B7280" />}
+              />
 
-            <Button
-              mode="contained"
-              onPress={handleLogin}
-              loading={loading}
-              disabled={loading}
-              style={styles.button}
-              buttonColor="#4CAF50"
-            >
-              Sign In as Student
-            </Button>
+              <Button
+                mode="contained"
+                onPress={handleLogin}
+                loading={loading}
+                disabled={loading}
+                style={styles.loginButton}
+                contentStyle={styles.loginButtonContent}
+                labelStyle={styles.loginButtonLabel}
+                buttonColor="#EC4899"
+              >
+                ENTER PORTAL
+              </Button>
 
-            <Text variant="bodySmall" style={styles.note}>
-              Note: Your account must be created by an administrator
-            </Text>
+              <View style={styles.noteBox}>
+                <Icon name="information-variant" size={16} color="#EC4899" />
+                <Text style={styles.noteText}>Credentials issued by administration during enrollment.</Text>
+              </View>
+            </Card.Content>
+          </Card>
 
-            <Button
-              mode="text"
-              onPress={() => navigation.goBack()}
-              style={styles.backButton}
-            >
-              Back to Welcome
-            </Button>
-          </Card.Content>
-        </Card>
-      </ScrollView>
+          <Text style={styles.forgotText}>KEEP YOUR CREDENTIALS SECURE</Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <Snackbar
         visible={!!error}
         onDismiss={() => setError('')}
-        duration={3000}
+        duration={4000}
+        style={styles.errorSnackbar}
       >
-        {error}
+        <Text style={styles.errorText}>{error}</Text>
       </Snackbar>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  scrollContent: {
-    flexGrow: 1,
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  flex: { flex: 1 },
+  headerBackground: { height: 280, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, overflow: 'hidden' },
+  headerGradient: { flex: 1, paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 50 : 40 },
+  backButton: { marginLeft: -12 },
+  headerContent: { alignItems: 'center' },
+  iconCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
-    padding: 20,
-  },
-  card: {
-    elevation: 4,
-  },
-  iconContainer: {
     alignItems: 'center',
     marginBottom: 16,
   },
-  title: {
-    textAlign: 'center',
-    marginBottom: 8,
-    fontWeight: 'bold',
-  },
-  subtitle: {
-    textAlign: 'center',
-    marginBottom: 24,
-    color: '#666',
-  },
-  input: {
-    marginBottom: 16,
-  },
-  button: {
-    marginTop: 8,
-    paddingVertical: 4,
-  },
-  note: {
-    marginTop: 16,
-    textAlign: 'center',
-    fontSize: 12,
-    color: '#666',
-    fontStyle: 'italic',
-  },
-  backButton: {
-    marginTop: 8,
-  },
+  titleText: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', letterSpacing: 4 },
+  subtitleText: { color: 'rgba(255, 255, 255, 0.6)', fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginTop: 4 },
+  scrollContent: { padding: 24, paddingTop: -40 },
+  loginCard: { backgroundColor: '#FFFFFF', borderRadius: 32, marginTop: -40 , maxWidth: 450, alignSelf: 'center', width: '100%'},
+  cardInner: { padding: 24 },
+  input: { marginBottom: 20, backgroundColor: '#FFFFFF' },
+  loginButton: { marginTop: 10, borderRadius: 16 },
+  loginButtonContent: { height: 64 },
+  loginButtonLabel: { fontWeight: '900', letterSpacing: 2, fontSize: 14, color: '#FFFFFF' },
+  noteBox: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#FDF2F8', borderRadius: 16, marginTop: 24, borderWidth: 1, borderColor: '#FCE7F3' },
+  noteText: { color: '#9D174D', fontSize: 11, marginLeft: 12, flex: 1, fontWeight: '600' },
+  forgotText: { textAlign: 'center', marginTop: 40, color: '#6B7280', fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
+  errorSnackbar: { backgroundColor: '#EF4444', borderRadius: 16 },
+  errorText: { color: '#FFFFFF', fontWeight: '800', textAlign: 'center' }
 });
 
 export default StudentLoginScreen;
-
-
-

@@ -50,10 +50,10 @@ export const getLiveDetections = async () => {
   try {
     return await getLiveDetectionsAPI();
   } catch (error) {
-    console.error('Error getting live detections:', error);
     if (__DEV__) {
       return { activeCameras: 0, totalDetections: 0, recentDetections: [] };
     }
+    console.error('Error getting live detections:', error);
     throw error;
   }
 };

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, ActivityIndicator, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import AdminNavigator from './AdminNavigator';
@@ -36,92 +36,73 @@ const MainNavigator = () => {
 
   // If no role, show error with helpful instructions
   if (!userRole) {
-    const { currentUser } = useAuth();
+    const { currentUser, logout } = useAuth();
     return (
-      <ScrollView contentContainerStyle={styles.errorContainer}>
-        <Text style={styles.errorTitle}>⚠️ Role Not Found</Text>
-        <Text style={styles.errorText}>
-          Your account is authenticated but the role field is missing or invalid in the database.
-        </Text>
-        
-        {currentUser && (
-          <View style={styles.userInfoCard}>
-            <Text style={styles.userInfoTitle}>Your Account Information:</Text>
-            <Text style={styles.userInfoText}>Email: {currentUser.email}</Text>
-            <Text style={styles.userInfoText}>UID: {currentUser.uid}</Text>
-            <Text style={styles.userInfoNote}>
-              ⚠️ Check the console for detailed debug information
+      <View style={styles.flex}>
+        <StatusBar barStyle="dark-content" />
+        <ScrollView contentContainerStyle={styles.errorContainer}>
+          <Text style={styles.errorTitle}>⚠️ Role Not Found</Text>
+          <Text style={styles.errorText}>
+            Your account is authenticated but the role field is missing or invalid in the database.
+          </Text>
+
+          {currentUser && (
+            <View style={styles.userInfoCard}>
+              <Text style={styles.userInfoTitle}>Your Account Information:</Text>
+              <Text style={styles.userInfoText}>Email: {currentUser.email}</Text>
+              <Text style={styles.userInfoText}>UID: {currentUser.uid}</Text>
+              <Text style={styles.userInfoNote}>
+                ⚠️ Check the console for detailed debug information
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.actionCard}>
+            <TouchableOpacity
+              style={styles.reloadButton}
+              onPress={async () => {
+                console.log('🔄 Manually refreshing user role...');
+                if (refreshUserRole) {
+                  await refreshUserRole();
+                }
+              }}
+            >
+              <Text style={styles.reloadButtonText}>Refresh Role</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.reloadButton, { backgroundColor: '#FF5252', marginTop: 10 }]}
+              onPress={async () => {
+                try {
+                  await logout();
+                } catch (err) {
+                  console.error('Action error:', err);
+                }
+              }}
+            >
+              <Text style={styles.reloadButtonText}>Terminate Session</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.instructionsCard}>
+            <Text style={styles.instructionsTitle}>To Fix This in Firestore:</Text>
+            <Text style={styles.instructionsText}>
+              1. Go to Firebase Console → Firestore Database{'\n\n'}
+              2. Find document in "users" collection{'\n'}
+              • Document ID MUST be: {currentUser?.uid || 'YOUR_UID'}{'\n\n'}
+              3. Check the document has these EXACT fields:{'\n'}
+              • role (type: string, value: "admin"){'\n'}
+              • email (type: string){'\n'}
+              • name (type: string){'\n\n'}
+              4. Common issues:{'\n'}
+              • Field name must be "role" (lowercase){'\n'}
+              • Value must be "admin" (lowercase, no quotes){'\n'}
+              • Document ID must match your UID exactly{'\n'}
+              • Check for typos or extra spaces
             </Text>
           </View>
-        )}
-        
-        <View style={styles.instructionsCard}>
-          <Text style={styles.instructionsTitle}>To Fix This in Firestore:</Text>
-          <Text style={styles.instructionsText}>
-            1. Go to Firebase Console → Firestore Database{'\n\n'}
-            2. Find document in "users" collection{'\n'}
-            • Document ID MUST be: {currentUser?.uid || 'YOUR_UID'}{'\n\n'}
-            3. Check the document has these EXACT fields:{'\n'}
-            • role (type: string, value: "admin"){'\n'}
-            • email (type: string){'\n'}
-            • name (type: string){'\n\n'}
-            4. Common issues:{'\n'}
-            • Field name must be "role" (lowercase){'\n'}
-            • Value must be "admin" (lowercase, no quotes){'\n'}
-            • Document ID must match your UID exactly{'\n'}
-            • Check for typos or extra spaces{'\n\n'}
-            5. After fixing, reload the app (press 'r' in Expo)
-          </Text>
-        </View>
-        
-        <View style={styles.debugCard}>
-          <Text style={styles.debugTitle}>Debug Information:</Text>
-          <Text style={styles.debugText}>
-            Check your browser/Expo console for:{'\n'}
-            • Document data structure{'\n'}
-            • Role value and type{'\n'}
-            • Available fields in document{'\n'}
-            • Firestore permission errors{'\n\n'}
-            Your document ID: OsRYFkYUqcSxIyHQ6EQMgD70pAj2{'\n'}
-            This should match your User UID exactly!
-          </Text>
-        </View>
-        
-        <View style={styles.firestoreCard}>
-          <Text style={styles.firestoreTitle}>Firestore Security Rules Check:</Text>
-          <Text style={styles.firestoreText}>
-            If you see "permission-denied" errors,{'\n'}
-            update your Firestore security rules to allow reads:{'\n\n'}
-            match /users/{'{userId}'} {'{'}{'\n'}
-            {'  '}allow read: if request.auth != null && request.auth.uid == userId;{'\n'}
-            {'}'}
-          </Text>
-        </View>
-        
-        <View style={styles.actionCard}>
-          <TouchableOpacity
-            style={styles.reloadButton}
-            onPress={async () => {
-              console.log('🔄 Manually refreshing user role...');
-              if (refreshUserRole) {
-                await refreshUserRole();
-              }
-            }}
-          >
-            <Text style={styles.reloadButtonText}>Refresh Role</Text>
-          </TouchableOpacity>
-          <Text style={styles.actionNote}>
-            Tap to manually refresh your role from Firestore{'\n'}
-            Or press 'r' in Expo terminal to reload app{'\n\n'}
-            Your UID: {currentUser?.uid || 'N/A'}{'\n'}
-            Document ID should match exactly!
-          </Text>
-        </View>
-        
-        <Text style={styles.errorNote}>
-          Your Firestore document looks correct. The app may need to reload to fetch the updated role.
-        </Text>
-      </ScrollView>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -137,13 +118,13 @@ const MainNavigator = () => {
         return <Stack.Screen name="SecurityHeadStack" component={SecurityHeadNavigator} />;
       default:
         return (
-          <Stack.Screen 
-            name="Error" 
+          <Stack.Screen
+            name="Error"
             component={() => (
               <View style={styles.errorContainer}>
                 <Text style={styles.errorText}>Invalid role: {userRole}</Text>
               </View>
-            )} 
+            )}
           />
         );
     }

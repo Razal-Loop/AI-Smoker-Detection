@@ -1,148 +1,101 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import {
-  Card,
-  Text,
-  Title,
-  ActivityIndicator,
-  Chip,
-  Button,
-} from 'react-native-paper';
+import { View, StyleSheet, ScrollView, Image, StatusBar } from 'react-native';
+import { Card, Text, ActivityIndicator, Chip, Button } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { getChallans } from '../../services/challanService';
 import { getUserById } from '../../services/userService';
-import { theme } from '../../theme/theme';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { getProofImageUrl } from '../../services/detectionService';
 
 const CaughtStudentsScreen = () => {
   const [caughtStudents, setCaughtStudents] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadCaughtStudents();
-  }, []);
+  useEffect(() => { loadCaughtStudents(); }, []);
 
   const loadCaughtStudents = async () => {
     try {
-      // Get all pending challans (recently caught students)
       const allChallans = await getChallans();
       const pendingChallans = allChallans.filter(c => c.status === 'pending');
-
-      // Fetch student names
-      const studentsWithChallans = await Promise.all(
-        pendingChallans.map(async (challan) => {
-          if (challan.studentId) {
+      const swc = await Promise.all(
+        pendingChallans.map(async (c) => {
+          if (c.studentId) {
             try {
-              const student = await getUserById(challan.studentId);
-              return { ...challan, studentName: student?.name || 'Unknown' };
-            } catch {
-              return { ...challan, studentName: 'Unknown' };
-            }
+              const student = await getUserById(c.studentId);
+              return { ...c, studentName: student?.name || 'UNKNOWN' };
+            } catch { return { ...c, studentName: 'UNKNOWN' }; }
           }
-          return challan;
+          return c;
         })
       );
-
-      setCaughtStudents(studentsWithChallans);
-    } catch (error) {
-      console.error('Error loading caught students:', error);
-    } finally {
-      setLoading(false);
-    }
+      setCaughtStudents(swc);
+    } catch (e) { console.error('Load Error:', e); }
+    finally { setLoading(false); }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
-    );
-  }
+  if (loading) return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color="#f97316" />
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Title style={styles.headerTitle}>Recent Violations</Title>
-        <Text style={styles.headerSubtitle}>Students caught smoking via AI detection</Text>
-      </View>
+      <StatusBar barStyle="light-content" />
+      <LinearGradient colors={['#9a3412', '#020617']} style={styles.header}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.headerTitle}>ACTIVE TARGETS</Text>
+            <Text style={styles.headerSubtitle}>PENDING INFRACTION ENFORCEMENT</Text>
+          </View>
+          <View style={styles.alertCount}>
+            <Text style={styles.alertCountText}>{caughtStudents.length}</Text>
+          </View>
+        </View>
+      </LinearGradient>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {caughtStudents.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconCircle}>
-              <Icon name="verified-user" size={48} color={theme.colors.success} />
+          <View style={styles.emptyBox}>
+            <View style={styles.iconCircle}>
+              <Icon name="shield-check" size={40} color="#10b981" />
             </View>
-            <Text style={styles.emptyText}>All Clear!</Text>
-            <Text style={styles.emptySubtext}>No recent smoking violations detected.</Text>
+            <Text style={styles.emptyText}>SECTOR CLEAR</Text>
+            <Text style={styles.emptySub}>NO ACTIVE VIOLATIONS FOUND IN DATABASE</Text>
           </View>
         ) : (
           caughtStudents.map((student) => (
             <Card key={student.id} style={styles.card}>
               <Card.Content>
                 <View style={styles.cardHeader}>
-                  <View style={styles.avatarContainer}>
-                    <Icon name="person" size={24} color={theme.colors.primary} />
+                  <View style={styles.avatar}>
+                    <Icon name="account-alert" size={24} color="#f97316" />
                   </View>
-                  <View style={styles.studentInfo}>
-                    <Title style={styles.studentName}>{student.studentName || 'Unknown Student'}</Title>
-                    <Text style={styles.studentId}>ID: {student.studentId?.toUpperCase() || 'N/A'}</Text>
+                  <View style={styles.info}>
+                    <Text style={styles.name}>{student.studentName?.toUpperCase() || 'UNIDENTIFIED'}</Text>
+                    <Text style={styles.id}>UID: {student.studentId?.toUpperCase() || 'EXTERNAL'}</Text>
                   </View>
-                  <Chip style={styles.pendingChip} textStyle={styles.pendingChipText}>PENDING</Chip>
+                  <Chip style={styles.statusChip} textStyle={styles.statusText}>PENDING</Chip>
                 </View>
 
-                <View style={styles.divider} />
-
-                <View style={styles.detailsGrid}>
-                  <View style={styles.detailItem}>
-                    <Icon name="schedule" size={16} color="#64748b" />
-                    <View style={styles.detailTextContent}>
-                      <Text style={styles.detailLabel}>Time Detected</Text>
-                      <Text style={styles.detailValue}>{formatDate(student.createdAt)}</Text>
+                {getProofImageUrl(student) && (
+                  <View style={styles.mediaBox}>
+                    <Image source={{ uri: getProofImageUrl(student) }} style={styles.media} />
+                    <View style={styles.mediaTag}>
+                      <Text style={styles.mediaTagText}>EVIDENCE_01</Text>
                     </View>
                   </View>
+                )}
 
-                  <View style={styles.detailItem}>
-                    <Icon name="place" size={16} color="#64748b" />
-                    <View style={styles.detailTextContent}>
-                      <Text style={styles.detailLabel}>Location</Text>
-                      <Text style={styles.detailValue} numberOfLines={1}>{student.location || 'Building A'}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.detailItem}>
-                    <Icon name="payments" size={16} color="#64748b" />
-                    <View style={styles.detailTextContent}>
-                      <Text style={styles.detailLabel}>Fine Amount</Text>
-                      <Text style={[styles.detailValue, { color: theme.colors.error, fontWeight: '800' }]}>₹{student.amount || 0}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.detailItem}>
-                    <Icon name="info" size={16} color="#64748b" />
-                    <View style={styles.detailTextContent}>
-                      <Text style={styles.detailLabel}>Status</Text>
-                      <Text style={[styles.detailValue, { color: theme.colors.warning }]}>Action Required</Text>
-                    </View>
-                  </View>
+                <View style={styles.grid}>
+                  <GridItem icon="clock-outline" label="TS_DETECTED" value={new Date(student.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} />
+                  <GridItem icon="map-marker-outline" label="LOC_SECTOR" value={student.location || 'CAMPUS'} />
+                  <GridItem icon="currency-inr" label="PENALTY_FEE" value={`₨ ${student.amount || 0}`} color="#ef4444" />
+                  <GridItem icon="shield-alert-outline" label="REQ_ACTION" value="IMMEDIATE" color="#f97316" />
                 </View>
 
-                <Button
-                  mode="outlined"
-                  onPress={() => { }}
-                  style={styles.detailsButton}
-                  labelStyle={styles.detailsButtonLabel}
-                >
-                  VIEW FULL RECORD
+                <Button mode="contained" onPress={() => { }} style={styles.actionBtn} buttonColor="rgba(249, 115, 22, 0.1)" textColor="#f97316">
+                  OPEN SYSTEM RECORD
                 </Button>
               </Card.Content>
             </Card>
@@ -153,161 +106,48 @@ const CaughtStudentsScreen = () => {
   );
 };
 
+const GridItem = ({ icon, label, value, color = '#334155' }) => (
+  <View style={styles.gridItem}>
+    <Icon name={icon} size={14} color="#94a3b8" />
+    <View style={{ marginLeft: 8 }}>
+      <Text style={styles.gridLabel}>{label}</Text>
+      <Text style={[styles.gridValue, { color }]}>{value}</Text>
+    </View>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    padding: 24,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1e293b',
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#64748b',
-    marginTop: 4,
-  },
-  scrollView: {
-    flex: 1,
-    padding: 16,
-  },
-  emptyContainer: {
-    marginTop: 80,
-    alignItems: 'center',
-  },
-  emptyIconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#f0fdf4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  emptyText: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1e293b',
-  },
-  emptySubtext: {
-    fontSize: 15,
-    color: '#64748b',
-    marginTop: 8,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  card: {
-    marginBottom: 16,
-    borderRadius: 20,
-    elevation: 2,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    overflow: 'hidden',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  avatarContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#f1f5f9',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  studentInfo: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  studentName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    lineHeight: 22,
-  },
-  studentId: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  pendingChip: {
-    backgroundColor: '#fff7ed',
-    height: 24,
-  },
-  pendingChipText: {
-    color: '#c2410c',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
-    marginBottom: 16,
-  },
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -8,
-  },
-  detailItem: {
-    width: '50%',
-    paddingHorizontal: 8,
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  detailTextContent: {
-    marginLeft: 8,
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94a3b8',
-    textTransform: 'uppercase',
-  },
-  detailValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-    marginTop: 1,
-  },
-  detailsButton: {
-    marginTop: 4,
-    borderRadius: 12,
-    borderColor: '#e2e8f0',
-  },
-  detailsButtonLabel: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { padding: 24, paddingTop: 60, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { color: '#fff', fontSize: 22, fontWeight: '900', letterSpacing: 1 },
+  headerSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: '800', letterSpacing: 1, marginTop: 4 },
+  alertCount: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#f97316', justifyContent: 'center', alignItems: 'center' },
+  alertCountText: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20 },
+  emptyBox: { marginTop: 80, alignItems: 'center' },
+  iconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(16, 185, 129, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  emptyText: { color: '#0f172a', fontSize: 18, fontWeight: '900', letterSpacing: 1 },
+  emptySub: { color: '#94a3b8', fontSize: 10, fontWeight: '800', marginTop: 8, letterSpacing: 1 },
+  card: { borderRadius: 28, marginBottom: 16, backgroundColor: '#fff', elevation: 0, borderWidth: 1, borderColor: '#f1f5f9' },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  avatar: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#fef3c7', justifyContent: 'center', alignItems: 'center' },
+  info: { flex: 1, marginLeft: 16 },
+  name: { fontSize: 14, fontWeight: '900', color: '#0f172a' },
+  id: { fontSize: 9, color: '#94a3b8', fontWeight: '800', marginTop: 2, letterSpacing: 0.5 },
+  statusChip: { height: 24, borderRadius: 6, backgroundColor: '#fff7ed' },
+  statusText: { fontSize: 8, fontWeight: '900', color: '#c2410c' },
+  mediaBox: { height: 180, borderRadius: 20, overflow: 'hidden', marginBottom: 20, backgroundColor: '#f8fafc' },
+  media: { width: '100%', height: '100%' },
+  mediaTag: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  mediaTagText: { color: '#fff', fontSize: 8, fontWeight: '900' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 },
+  gridItem: { width: '50%', flexDirection: 'row', marginBottom: 16 },
+  gridLabel: { fontSize: 8, fontWeight: '900', color: '#94a3b8', letterSpacing: 0.5 },
+  gridValue: { fontSize: 12, fontWeight: '800', marginTop: 1 },
+  actionBtn: { borderRadius: 14, elevation: 0 }
 });
 
 export default CaughtStudentsScreen;
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "257104530268",
+    "project_id": "smoking-detection-5e641",
+    "storage_bucket": "smoking-detection-5e641.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:257104530268:android:c3021c2df3e0e16ab6cf99",
+        "android_client_info": {
+          "package_name": "com.dev.smokingdetection"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGBAJMawxfq5S87lwmOpwZlXfoVmI6NxM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

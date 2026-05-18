@@ -1,11 +1,11 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import MyChallansScreen from '../screens/student/MyChallansScreen';
 import ProfileScreen from '../screens/student/ProfileScreen';
 import { useAuth } from '../context/AuthContext';
-import { TouchableOpacity } from 'react-native';
+import { TouchableOpacity, View, StyleSheet, Platform } from 'react-native';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -13,62 +13,115 @@ const Stack = createNativeStackNavigator();
 const StudentTabs = () => {
   const { logout } = useAuth();
 
+  const handleLogout = async () => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to logout?');
+      if (!confirmed) return;
+    }
+    try {
+      await logout();
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        tabBarLabelPosition: 'below-icon',
+        headerShown: true,
+        headerStyle: { backgroundColor: '#020617' },
+        headerTintColor: '#fff',
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
           if (route.name === 'MyChallans') {
-            iconName = 'receipt';
+            iconName = focused ? 'receipt' : 'receipt-outline';
           } else if (route.name === 'Profile') {
-            iconName = 'person';
+            iconName = focused ? 'account' : 'account-outline';
           }
-          return <Icon name={iconName} size={size} color={color} />;
+          return (
+            <View style={focused ? styles.activeTab : null}>
+              <Icon name={iconName} size={24} color={color} />
+            </View>
+          );
         },
-        tabBarActiveTintColor: '#2196F3',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: '#ec4899',
+        tabBarInactiveTintColor: '#94a3b8',
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 0,
+          elevation: 25,
+          ...(Platform.OS === 'web' 
+             ? { 
+                 position: 'absolute',
+                 bottom: 20,
+                 left: 0,
+                 right: 0,
+                 marginHorizontal: 'auto',
+                 width: '100%',
+                 maxWidth: 450,
+                 borderRadius: 36,
+                 borderWidth: 1,
+                 borderColor: '#E2E8F0',
+                 boxShadow: '0 10px 25px rgba(15, 23, 42, 0.1)',
+                 height: 70,
+                 paddingTop: 12,
+                 paddingBottom: 12,
+               }
+             : {
+                 height: Platform.OS === 'ios' ? 95 : 82,
+                 paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+                 paddingTop: 12,
+                 position: 'absolute',
+                 bottom: 0,
+                 left: 0,
+                 right: 0,
+                 borderTopLeftRadius: 36,
+                 borderTopRightRadius: 36,
+                 borderWidth: 1,
+                 borderColor: '#F1F5F9',
+                 shadowColor: '#0F172A',
+                 shadowOffset: { width: 0, height: -4 },
+                 shadowOpacity: 0.1,
+                 shadowRadius: 10
+               })
+        },
         headerRight: () => (
-          <TouchableOpacity
-            onPress={logout}
-            style={{ marginRight: 15 }}
-          >
-            <Icon name="logout" size={24} color="#2196F3" />
+          <TouchableOpacity onPress={handleLogout} style={{ marginRight: 20 }}>
+            <Icon name="logout" size={24} color="#ec4899" />
           </TouchableOpacity>
         ),
       })}
     >
-      <Tab.Screen 
-        name="MyChallans" 
+      <Tab.Screen
+        name="MyChallans"
         component={MyChallansScreen}
-        options={{ title: 'My Challans' }}
+        options={{ title: 'MY RECORDS' }}
       />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ title: 'STUDENT PROFILE' }}
+      />
     </Tab.Navigator>
   );
 };
 
 const StudentNavigator = () => {
   return (
-    <Stack.Navigator>
-      <Stack.Screen 
-        name="StudentTabs" 
-        component={StudentTabs} 
-        options={{ headerShown: false }}
-      />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="StudentTabs" component={StudentTabs} />
     </Stack.Navigator>
   );
 };
 
+const styles = StyleSheet.create({
+  activeTab: {
+    backgroundColor: 'rgba(236, 72, 153, 0.08)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20
+  }
+});
+
 export default StudentNavigator;
-
-
-
-
-
-
-
-
-
-
-
-
