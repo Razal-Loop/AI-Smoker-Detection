@@ -35,6 +35,7 @@ const DashboardScreen = ({ navigation }) => {
     trend: 0
   });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const theme = useTheme();
 
   useEffect(() => {
@@ -63,7 +64,7 @@ const DashboardScreen = ({ navigation }) => {
         cancelled: challans.filter(c => c.status === 'cancelled').length,
         totalRevenue: totalRev,
         dailyTarget: dailyProgress,
-        trend: challans.length > 0 ? 12.4 : 0 // Keep a realistic trend calculation
+        trend: challans.length > 0 ? (paid.length / challans.length * 100).toFixed(1) : 0
       }));
       setLoading(false);
     });
@@ -93,7 +94,14 @@ const DashboardScreen = ({ navigation }) => {
     };
   }, []);
 
-  // Use stats.dailyTarget for the progress bar instead of hardcoded 82%
+  const loadData = async () => {
+    setRefreshing(true);
+    try {
+      const live = await getLiveDetections();
+      setStats(prev => ({ ...prev, cameras: live.activeCameras || 0 }));
+    } catch (e) { }
+    setRefreshing(false);
+  };
 
   const handleLogout = async () => {
     if (Platform.OS === 'web') {
@@ -108,11 +116,11 @@ const DashboardScreen = ({ navigation }) => {
     } else {
       Alert.alert(
         "CONFIRM LOGOUT",
-        "Are you sure you want to terminate current session?",
+        "Are you sure you want to log out?",
         [
           { text: "CANCEL", style: "cancel" },
           {
-            text: "TERMINATE",
+            text: "LOGOUT",
             onPress: async () => {
               try {
                 await logout();
@@ -132,7 +140,7 @@ const DashboardScreen = ({ navigation }) => {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>SYNCHRONIZING CORE...</Text>
+        <Text style={styles.loadingText}>PREPARING DASHBOARD...</Text>
       </View>
     );
   }
@@ -154,8 +162,8 @@ const DashboardScreen = ({ navigation }) => {
         <LinearGradient colors={theme.colors.headerGradient} style={styles.heroSection}>
           <View style={styles.headerTop}>
             <View>
-              <Text style={styles.welcomeText}>SYSTEM IS ACTIVE</Text>
-              <Text style={styles.titleText}>Admin Overview</Text>
+              <Text style={styles.welcomeText}>SYSTEM STATUS: ACTIVE</Text>
+              <Text style={styles.titleText}>Command Center</Text>
             </View>
             <View style={styles.headerRight}>
               <IconButton
@@ -179,8 +187,8 @@ const DashboardScreen = ({ navigation }) => {
               style={styles.revenueGradient}
             >
               <View style={styles.revenueHeader}>
-                <Text style={styles.revenueLabel}>TOTAL REVENUE</Text>
-                <Icon name="chart-bell-curve-cumulative" size={20} color="#FFFFFF" />
+                <Text style={styles.revenueLabel}>TOTAL FINES COLLECTED</Text>
+                <Icon name="cash-multiple" size={20} color="#FFFFFF" />
               </View>
               <Text style={styles.revenueValue}>Rs {stats.totalRevenue.toLocaleString()}</Text>
 
@@ -188,15 +196,15 @@ const DashboardScreen = ({ navigation }) => {
                 <View style={[styles.progressBar, { width: `${stats.dailyTarget}%`, backgroundColor: theme.colors.success }]} />
               </View>
               <View style={styles.progressFooter}>
-                <Text style={styles.progressLabel}>Daily Target Reach: {stats.dailyTarget}%</Text>
-                <Text style={[styles.progressTrend, { color: theme.colors.success }]}>{stats.trend > 0 ? `+${stats.trend}% ↑` : '0% ↔'}</Text>
+                <Text style={styles.progressLabel}>Daily Coverage: {stats.dailyTarget}%</Text>
+                <Text style={[styles.progressTrend, { color: theme.colors.success }]}>{stats.trend > 0 ? `+${stats.trend}% Activity ↑` : 'Normal Activity ↔'}</Text>
               </View>
             </LinearGradient>
           </Card>
         </LinearGradient>
 
         <View style={styles.mainContent}>
-          <Text style={styles.sectionTitle}>CHALLAN STATISTICS</Text>
+          <Text style={styles.sectionTitle}>VIOLATION STATISTICS</Text>
 
           <View style={styles.grid}>
             <MetricCard
@@ -229,7 +237,7 @@ const DashboardScreen = ({ navigation }) => {
             />
           </View>
 
-          <Text style={[styles.sectionTitle, { marginTop: 32 }]}>INFRASTRUCTURE NODES</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 32 }]}>QUICK CONTROLS</Text>
 
           <View style={styles.assetRow}>
             <TouchableRipple
@@ -241,7 +249,7 @@ const DashboardScreen = ({ navigation }) => {
                 <Avatar.Icon size={42} icon="account-supervisor-circle" backgroundColor="rgba(15, 23, 42, 0.08)" color={theme.colors.primary} />
                 <View style={styles.assetInfo}>
                   <Text style={styles.assetValue}>{stats.students}</Text>
-                  <Text style={styles.assetLabel}>STUDENTS LIST</Text>
+                  <Text style={styles.assetLabel}>ENROLLED STUDENTS</Text>
                 </View>
               </View>
             </TouchableRipple>

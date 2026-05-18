@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { 
+import {
   View,
   StyleSheet,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
   StatusBar
-, useWindowDimensions } from 'react-native';
+  , useWindowDimensions
+} from 'react-native';
 import {
   TextInput,
   Button,
@@ -82,18 +83,18 @@ const LoginScreen = ({ navigation }) => {
               <IconButton icon="shield-lock" size={48} iconColor="#fff" />
             </LinearGradient>
           </View>
-          <Text style={styles.welcomeText}>SECURE TERMINAL</Text>
-          <Text style={styles.titleText}>SHIELD AI</Text>
+          <Text style={styles.welcomeText}>SECURITY SYSTEM</Text>
+          <Text style={styles.titleText}>Admin Portal</Text>
         </View>
 
         <Surface style={styles.authCard} elevation={4}>
-          <Text style={styles.authTitle}>INITIALIZE ACCESS</Text>
-          <Text style={styles.authSub}>Enter credentials for biometric uplink</Text>
+          <Text style={styles.authTitle}>LOGIN</Text>
+          <Text style={styles.authSub}>Sign in to manage smoking detection</Text>
 
           {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View> : null}
 
           <TextInput
-            label="COMMANDER EMAIL"
+            label="Email Address"
             value={email}
             onChangeText={setEmail}
             mode="outlined"
@@ -105,7 +106,7 @@ const LoginScreen = ({ navigation }) => {
           />
 
           <TextInput
-            label="ACCESS KEY"
+            label="Password"
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
@@ -126,7 +127,7 @@ const LoginScreen = ({ navigation }) => {
             contentStyle={styles.loginButtonContent}
             labelStyle={styles.loginButtonLabel}
           >
-            ESTABLISH CONNECTION
+            SIGN IN
           </Button>
 
           <TouchableRipple
@@ -134,7 +135,7 @@ const LoginScreen = ({ navigation }) => {
             style={styles.signupLink}
           >
             <Text style={styles.signupText}>
-              NEW ENTITY? <Text style={{ color: '#6366f1', fontWeight: '900' }}>REGISTER DATA</Text>
+              DON'T HAVE AN ACCOUNT? <Text style={{ color: '#6366f1', fontWeight: '900' }}>REGISTER</Text>
             </Text>
           </TouchableRipple>
         </Surface>
@@ -153,7 +154,7 @@ const styles = StyleSheet.create({
   logoGlow: { borderRadius: 24, padding: 4, elevation: 15, ...(Platform.OS === 'web' ? { boxShadow: '0 0 20px rgba(99,102,241,0.5)' } : { shadowColor: '#6366f1', shadowOpacity: 0.5, shadowRadius: 20 }) },
   welcomeText: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '900', letterSpacing: 4 },
   titleText: { color: '#fff', fontSize: 42, fontWeight: '900', letterSpacing: -1 },
-  authCard: { width: '100%', backgroundColor: '#fff', borderRadius: 32, padding: 32, paddingBottom: 40 , maxWidth: 450, alignSelf: 'center'},
+  authCard: { width: '100%', backgroundColor: '#fff', borderRadius: 32, padding: 32, paddingBottom: 40, maxWidth: 450, alignSelf: 'center' },
   authTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a', letterSpacing: 1 },
   authSub: { fontSize: 12, color: '#64748b', marginTop: 4, marginBottom: 24, fontWeight: '600' },
   input: { marginBottom: 16, backgroundColor: '#fff' },

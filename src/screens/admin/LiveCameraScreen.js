@@ -20,43 +20,77 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 
 import { onSnapshot, collection, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { getSocket, connectSocket, disconnectSocket, emitFrame } from '../../services/socketService';
 
 const LiveCameraScreen = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [isLive, setIsLive] = useState(false);
   const [recentDetections, setRecentDetections] = useState([]);
   const [isTargeting, setIsTargeting] = useState(false);
-  const [telemetry, setTelemetry] = useState({ fps: 24.8, latency: 12 });
+  const [telemetry, setTelemetry] = useState({ fps: 0, latency: 0 });
+  const [lastResult, setLastResult] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   const theme = useTheme();
   const cameraRef = useRef(null);
 
   useEffect(() => {
-    // 1. Real-time Intelligence Stream
+    // 1. Initialize Socket
+    const socket = connectSocket();
+
+    socket.on('detection_result', (result) => {
+      setLastResult(result);
+      if (result.detections?.length > 0) {
+        setTelemetry(prev => ({ ...prev, fps: result.fps || 2.0, latency: result.latency || 45 }));
+      }
+    });
+
+    // 2. Real-time History Stream
     const q = query(collection(db, 'challans'), orderBy('createdAt', 'desc'), limit(10));
     const unsub = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setRecentDetections(data);
     });
 
-    // 2. HUD Visual Effects
     const targetingInterval = setInterval(() => {
       setIsTargeting(prev => !prev);
     }, 2000);
 
-    // 3. Mock Telemetry Logic (to look pro)
-    const telemetryInterval = setInterval(() => {
-      setTelemetry({
-        fps: (24 + Math.random()).toFixed(1),
-        latency: Math.floor(10 + Math.random() * 15)
-      });
-    }, 1500);
-
     return () => {
       unsub();
       clearInterval(targetingInterval);
-      clearInterval(telemetryInterval);
+      disconnectSocket();
     };
   }, []);
+
+  // Frame Capture Loop
+  useEffect(() => {
+    let frameTimer = null;
+    if (isLive && !isProcessing) {
+      frameTimer = setInterval(async () => {
+        if (cameraRef.current && !isProcessing) {
+          try {
+            setIsProcessing(true);
+            const photo = await cameraRef.current.takePictureAsync({
+              quality: 0.3,
+              base64: true,
+              scale: 0.5,
+              skipProcessing: true
+            });
+
+            if (photo.base64) {
+              const cameraId = Platform.OS === 'web' ? 'web-admin' : 'camera-1';
+              emitFrame(cameraId, photo.base64);
+            }
+          } catch (err) {
+            console.warn('Capture error:', err);
+          } finally {
+            setIsProcessing(false);
+          }
+        }
+      }, 1500); // 1.5 seconds per frame for stability
+    }
+    return () => { if (frameTimer) clearInterval(frameTimer); };
+  }, [isLive, isProcessing]);
 
   if (!permission) return <View style={styles.center}><ActivityIndicator color={theme.colors.primary} /></View>;
   if (!permission.granted) {

@@ -164,7 +164,7 @@ const AddUserScreen = () => {
                       activeOutlineColor={accentColor}
                       textColor="#1E293B"
                     />
-                    <Text style={styles.sectionLabel}>Student Photo (Required for AI)</Text>
+                    <Text style={styles.sectionLabel}>Student Photo (Required for Detection)</Text>
                     <View style={styles.photoBox}>
                       {photoUri ? (
                         <View style={styles.imageWrapper}>

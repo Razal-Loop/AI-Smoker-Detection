@@ -4,3 +4,7 @@ venv/
 backend/venv/
 .expo/
 __pycache__/
+backend/ServiceAccount.json
+backend/test-firebase.js
+*.pkl
+backend/temp/

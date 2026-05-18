@@ -56,7 +56,7 @@ const ManageUsersScreen = ({ navigation }) => {
               await deleteUser(userId);
               loadUsers();
             } catch (err) {
-              Alert.alert('Protocol Error', 'Failed to terminate entity.');
+              Alert.alert('Error', 'Failed to delete user.');
             }
           }
         }

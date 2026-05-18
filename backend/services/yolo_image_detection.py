@@ -62,9 +62,10 @@ def detect_smoking_image(image_path):
     if image is None:
         return {"error": "Could not read image", "detections": []}
 
-    results = model(image, conf=DETECTION_CONF_THRESHOLD, verbose=False)
-    detections = []
-    has_smoking = False
+    results = model(image, conf=0.25, verbose=False)
+    
+    people_boxes = []
+    smoking_candidates = []
 
     for r in results:
         for box, conf, cls_id in zip(r.boxes.xyxy.cpu().numpy(),
@@ -74,22 +75,53 @@ def detect_smoking_image(image_path):
             class_name = model.names[int(cls_id)]
             confidence = float(conf)
 
-            if not is_relevant_class(class_name) or confidence < DETECTION_CONF_THRESHOLD:
+            if not is_relevant_class(class_name):
                 continue
 
-            is_smk = is_smoking_class(class_name)
-            if is_smk: has_smoking = True
+            if is_smoking_class(class_name):
+                smoking_candidates.append({"label": class_name, "confidence": confidence, "bbox": [x1, y1, x2, y2]})
+            else:
+                people_boxes.append({"bbox": [x1, y1, x2, y2], "confidence": confidence})
 
-            detections.append({
-                "label": class_name,
-                "confidence": confidence,
-                "bbox": [x1, y1, x2, y2]
-            })
+    # SPATIAL CONTEXT BOOSTING
+    for smk in smoking_candidates:
+        sx1, sy1, sx2, sy2 = smk["bbox"]
+        for p in people_boxes:
+            px1, py1, px2, py2 = p["bbox"]
+            pad_w = (px2 - px1) * 0.25
+            pad_h = (py2 - py1) * 0.25
+            if not (sx2 < px1 - pad_w or sx1 > px2 + pad_w or sy2 < py1 - pad_h or sy1 > py2 + pad_h):
+                smk["confidence"] = min(smk["confidence"] * 1.25, 1.0)
+                smk["boosted"] = True
+                break
 
-            color = (0, 0, 255) if is_smk else (0, 255, 0)
-            cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(image, f"{class_name} {conf:.2f}", (x1, y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    detections = []
+    has_smoking = False
+    
+    for smk in smoking_candidates:
+        if smk["confidence"] < DETECTION_CONF_THRESHOLD:
+            continue
+            
+        has_smoking = True
+        detections.append({
+            "label": smk["label"],
+            "confidence": smk["confidence"],
+            "bbox": smk["bbox"],
+            "boosted": smk.get("boosted", False)
+        })
+
+        x1, y1, x2, y2 = smk["bbox"]
+        color = (0, 0, 255)
+        cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+        label = f"{smk['label']} {smk['confidence']:.2f}"
+        if smk.get("boosted"): label += " [CONTEXT]"
+        cv2.putText(image, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+    # Add people to image (optional, lower opacity)
+    for p in people_boxes:
+        if p["confidence"] >= DETECTION_CONF_THRESHOLD:
+            x1, y1, x2, y2 = p["bbox"]
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 1)
 
     # Face detection for identification
     face_images = []
@@ -116,7 +148,7 @@ def detect_smoking_image(image_path):
         "face_images": face_images,
         "timestamp": datetime.utcnow().isoformat(),
         "report_image": output_path,
-        "detected": len(detections) > 0
+        "detected": has_smoking
     }
 
 

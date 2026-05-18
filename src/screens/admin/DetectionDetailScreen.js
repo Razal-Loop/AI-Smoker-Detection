@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {  View, StyleSheet, ScrollView, Image, Dimensions, StatusBar, Platform, TouchableOpacity , useWindowDimensions } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, Dimensions, StatusBar, Platform, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Card, Text, Button, Divider, useTheme, Avatar } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
@@ -61,7 +61,7 @@ const DetectionDetailScreen = ({ route, navigation }) => {
             <TouchableOpacity onPress={() => navigation.goBack()}>
               <Icon name="chevron-left" size={32} color="#FFFFFF" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>INCIDENT DOSSIER</Text>
+            <Text style={styles.headerTitle}>DETECTION DETAIL</Text>
             <View style={{ width: 32 }} />
           </View>
         </LinearGradient>
@@ -73,20 +73,20 @@ const DetectionDetailScreen = ({ route, navigation }) => {
               <View style={styles.imageOverlay}>
                 <View style={styles.captureBadge}>
                   <Icon name="shield-check" size={14} color="#FFFFFF" />
-                  <Text style={styles.captureText}>VERIFIED CORE CAPTURE</Text>
+                  <Text style={styles.captureText}>SYSTEM CAPTURED EVIDENCE</Text>
                 </View>
               </View>
             </Card>
           ) : (
             <View style={styles.placeholderImage}>
               <Icon name="image-off-outline" size={64} color="#E2E8F0" />
-              <Text style={styles.placeholderText}>VISUAL LOGS UNAVAILABLE</Text>
+              <Text style={styles.placeholderText}>NO IMAGE AVAILABLE</Text>
             </View>
           )}
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.sectionLabel}>CHRONOLOGICAL & SPATIAL DATA</Text>
+          <Text style={styles.sectionLabel}>TIME AND LOCATION</Text>
           <Card style={styles.infoCard} elevation={2}>
             <View style={styles.metaRow}>
               <View style={[styles.iconBox, { backgroundColor: 'rgba(15, 23, 42, 0.05)' }]}>
@@ -103,13 +103,13 @@ const DetectionDetailScreen = ({ route, navigation }) => {
                 <Icon name="map-marker-outline" size={24} color="#22C55E" />
               </View>
               <View style={styles.metaText}>
-                <Text style={styles.metaLab}>SECTOR LOCATION</Text>
-                <Text style={styles.metaVal}>{detection.location?.toUpperCase() || 'UNKNOWN NODE'}</Text>
+                <Text style={styles.metaLab}>CAMERA LOCATION</Text>
+                <Text style={styles.metaVal}>{detection.location?.toUpperCase() || 'UNKNOWN'}</Text>
               </View>
             </View>
           </Card>
 
-          <Text style={styles.sectionLabel}>IDENTITY RESOLUTION</Text>
+          <Text style={styles.sectionLabel}>IDENTIFIED PERSON</Text>
           {hasMatchedStudent ? (
             <Card style={styles.identityCard} elevation={2}>
               <View style={styles.identityHeader}>
@@ -140,14 +140,14 @@ const DetectionDetailScreen = ({ route, navigation }) => {
                   <Icon name="account-question-outline" size={32} color="#EF4444" />
                 </View>
                 <View style={styles.identityInfo}>
-                  <Text style={[styles.studentName, { color: '#EF4444' }]}>UNKNOWN ENTITY</Text>
-                  <Text style={styles.unidentifiedSub}>Face recognition failed to match subjects.</Text>
+                  <Text style={[styles.studentName, { color: '#EF4444' }]}>UNIDENTIFIED PERSON</Text>
+                  <Text style={styles.unidentifiedSub}>Could not match face with database.</Text>
                 </View>
               </View>
             </Card>
           )}
 
-          <Text style={styles.sectionLabel}>DETECTION PAYLOAD</Text>
+          <Text style={styles.sectionLabel}>DETECTED OBJECTS</Text>
           <View style={styles.payloadRow}>
             {detectionsList.map((d, i) => {
               const isSmoking = (d.label || '').toLowerCase().includes('smok');
@@ -170,7 +170,7 @@ const DetectionDetailScreen = ({ route, navigation }) => {
               contentStyle={styles.actionBtnContent}
               labelStyle={styles.actionBtnLabel}
             >
-              INITIALIZE CHALLAN
+              CREATE FINE / CHALLAN
             </Button>
           )}
         </View>

@@ -27,6 +27,48 @@ class DetectionService {
   }
 
   /**
+   * SEND PUSH NOTIFICATION
+   * Alerts admins and guards of smoking events.
+   */
+  async sendPushNotification(title, body, data = {}) {
+    try {
+      const db = admin.firestore();
+      // Get all staff users who should receive alerts
+      const staffSnapshot = await db.collection('users')
+        .where('role', 'in', ['admin', 'guard', 'security_head'])
+        .get();
+
+      const tokens = [];
+      staffSnapshot.forEach(doc => {
+        const u = doc.data();
+        if (u.fcmToken) tokens.push(u.fcmToken);
+      });
+
+      if (tokens.length === 0) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Notification] No staff tokens found; skipping push.');
+        }
+        return;
+      }
+
+      const message = {
+        notification: { title, body },
+        data: {
+          ...data,
+          type: 'detection_alert',
+          timestamp: new Date().toISOString()
+        },
+        tokens: tokens,
+      };
+
+      const response = await admin.messaging().sendEachForMulticast(message);
+      console.log(`[Notification] Alert dispatched to ${response.successCount} staff devices.`);
+    } catch (err) {
+      console.error('[Notification] FCM Error:', err);
+    }
+  }
+
+  /**
    * LISTEN FOR STUDENT CHANGES
    * Real-time sync of biometric cache when new students register.
    */
@@ -343,7 +385,20 @@ class DetectionService {
 
         // Remove local report file
         fs.unlink(reportPath, (err) => {
-          if (err) console.error(`[${cameraId}] Failed to delete temp image:`, err);
+          if (io) {
+            io.emit("detection", { cameraId, ...result, detections, matchedStudent });
+          }
+
+          // 4. Send Push Notification for staff
+          const hasSmoking = detections.some(d => isSmokingLabel(d.label));
+          if (hasSmoking) {
+            const name = matchedStudent ? matchedStudent.name : 'Unknown';
+            this.sendPushNotification(
+              '🚨 Smoking Detected!',
+              `AI system identified smoking near ${cameraId} by ${name}. Proof image captured.`,
+              { cameraId, detectionId: '' }
+            );
+          }
         });
       } catch (err) {
         console.error(`[${cameraId}] Firebase save error:`, err);
@@ -626,6 +681,14 @@ class DetectionService {
           // Emit via socket only when smoking was detected (capture event)
           if (io && hasSmoking) {
             io.emit('detection', { cameraId, ...result });
+
+            // Send push alert
+            const name = matchedStudent ? matchedStudent.name : 'Unknown';
+            this.sendPushNotification(
+              '🚨 Smoking Detected (Mobile)',
+              `Mobile feed ${cameraId} detected smoking by ${name}.`,
+              { cameraId, result: 'detected' }
+            );
           }
 
           resolve(result);
